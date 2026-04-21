@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vpn_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vpn}
+      POSTGRES_USER: ${POSTGRES_USER:-vpn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vpn}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  amneziawg:
+    build: ./amneziawg
+    container_name: amneziawg
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    volumes:
+      - ./amneziawg/config:/etc/amneziawg
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - "${AWG_PORT:-51820}:51820/udp"
+    restart: unless-stopped
+
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: xray
+    volumes:
+      - ./xray:/etc/xray
+    ports:
+      - "${XRAY_PORT:-443}:443"
+    restart: unless-stopped
+
+  mtproxy:
+    image: telegrammessenger/proxy:latest
+    container_name: mtproxy
+    ports:
+      - "${MTPROXY_PORT:-8443}:443"
+    environment:
+      - SECRET=${MTPROXY_SECRET}
+    volumes:
+      - mtproxy_data:/data
+    restart: unless-stopped
+
+  bot:
+    build: ./bot
+    container_name: vpn_bot
+    volumes:
+      - ./amneziawg/config:/etc/amneziawg
+      - ./xray:/etc/xray
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      amneziawg:
+        condition: service_started
+      xray:
+        condition: service_started
+      mtproxy:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  mtproxy_data:
+  postgres_data:

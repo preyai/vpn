@@ -1,0 +1,27 @@
+import os
+
+DATABASE_URL           = os.environ["DATABASE_URL"]
+
+BOT_TOKEN              = os.environ["BOT_TOKEN"]
+GROUP_ID               = int(os.environ["GROUP_ID"])
+SERVER_IP              = os.environ["SERVER_IP"]
+ADMIN_IDS              = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()]
+
+AWG_PORT               = int(os.environ.get("AWG_PORT", "51820"))
+XRAY_PORT              = int(os.environ.get("XRAY_PORT", "443"))
+XRAY_REALITY_SNI       = os.environ.get("XRAY_REALITY_SNI", "www.microsoft.com")
+XRAY_REALITY_PUBLIC_KEY = os.environ["XRAY_REALITY_PUBLIC_KEY"]
+XRAY_REALITY_SHORT_ID  = os.environ["XRAY_REALITY_SHORT_ID"]
+
+MTPROXY_PORT           = int(os.environ.get("MTPROXY_PORT", "8443"))
+MTPROXY_SECRET         = os.environ["MTPROXY_SECRET"]
+
+WG_CONFIG_PATH         = "/etc/amneziawg/wg0.conf"
+XRAY_CONFIG_PATH       = "/etc/xray/config.json"
+
+AWG_CONTAINER_NAME     = "amneziawg"
+XRAY_CONTAINER_NAME    = "xray"
+
+WG_SERVER_IP           = "10.8.0.1"
+WG_SUBNET_BASE         = "10.8.0"
+WG_MAX_PEERS           = 250
