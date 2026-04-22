@@ -1,6 +1,14 @@
 import os
 
-DATABASE_URL           = os.environ["DATABASE_URL"]
+POSTGRES_DB            = os.environ.get("POSTGRES_DB", "vpn")
+POSTGRES_USER          = os.environ.get("POSTGRES_USER", "vpn")
+POSTGRES_HOST          = os.environ.get("POSTGRES_HOST", "postgres")
+POSTGRES_PORT          = int(os.environ.get("POSTGRES_PORT", "5432"))
+POSTGRES_PASSWORD      = os.environ.get("POSTGRES_PASSWORD", "")
+DATABASE_URL           = os.environ.get(
+    "DATABASE_URL",
+    f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}",
+)
 
 BOT_TOKEN              = os.environ["BOT_TOKEN"]
 GROUP_ID               = int(os.environ["GROUP_ID"])
@@ -14,6 +22,7 @@ XRAY_REALITY_PUBLIC_KEY = os.environ["XRAY_REALITY_PUBLIC_KEY"]
 XRAY_REALITY_SHORT_ID  = os.environ["XRAY_REALITY_SHORT_ID"]
 
 MTPROXY_PORT           = int(os.environ.get("MTPROXY_PORT", "8443"))
+MTPROXY_DOMAIN         = os.environ.get("MTPROXY_DOMAIN", "www.microsoft.com")
 MTPROXY_SECRET         = os.environ["MTPROXY_SECRET"]
 
 WG_CONFIG_PATH         = "/etc/amneziawg/wg0.conf"

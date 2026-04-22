@@ -5,6 +5,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
+      TIMEOUT_CLIENT: 30s
+      TIMEOUT_CONNECT: 30s
+      TIMEOUT_SERVER: 30s
       CONTAINERS: 1   # allow GET /containers/*
       EXEC: 1         # allow creating and running exec sessions
       KILL: 1         # allow sending signals (SIGHUP for xray reload)
@@ -68,6 +71,7 @@ services:
       - ./xray:/etc/xray
     environment:
       DOCKER_HOST: tcp://docker_socket_proxy:2375
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vpn}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-vpn}
     env_file: .env
     depends_on:
       docker-socket-proxy:

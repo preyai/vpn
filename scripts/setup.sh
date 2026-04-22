@@ -147,10 +147,16 @@ EOF
 info "Xray config created."
 
 # --- Generate MTProxy secret ---
-# mtg simple-run expects a plain 16-byte secret encoded as 32 hex chars.
-# For FakeTLS (ee prefix), run manually:
-#   docker run --rm ghcr.io/9seconds/mtg/mtg:2 generate-secret --hex tls google.com
-MTPROXY_SECRET="$(openssl rand -hex 16)"
+# mtg v2 expects an ee-prefixed secret that embeds a fronting hostname.
+# See: mtg generate-secret --hex google.com
+MTPROXY_DOMAIN="www.microsoft.com"
+MTPROXY_SECRET=$(MTPROXY_DOMAIN="$MTPROXY_DOMAIN" python3 - <<'PYEOF'
+import os, secrets
+
+domain = os.environ["MTPROXY_DOMAIN"].encode("ascii")
+print("ee" + secrets.token_hex(16) + domain.hex())
+PYEOF
+)
 
 # --- Generate PostgreSQL password ---
 POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
@@ -170,6 +176,7 @@ sed -i \
     -e "s|^XRAY_REALITY_PRIVATE_KEY=.*|XRAY_REALITY_PRIVATE_KEY=${XRAY_PRIVATE_KEY}|" \
     -e "s|^XRAY_REALITY_PUBLIC_KEY=.*|XRAY_REALITY_PUBLIC_KEY=${XRAY_PUBLIC_KEY}|" \
     -e "s|^XRAY_REALITY_SHORT_ID=.*|XRAY_REALITY_SHORT_ID=${XRAY_SHORT_ID}|" \
+    -e "s|^MTPROXY_DOMAIN=.*|MTPROXY_DOMAIN=${MTPROXY_DOMAIN}|" \
     -e "s|^MTPROXY_SECRET=.*|MTPROXY_SECRET=${MTPROXY_SECRET}|" \
     .env
 
@@ -183,4 +190,5 @@ echo ""
 echo "Server IP:        ${SERVER_IP}"
 echo "WireGuard pubkey: ${WG_PUBLIC_KEY}"
 echo "Xray pubkey:      ${XRAY_PUBLIC_KEY}"
+echo "MTProxy domain:   ${MTPROXY_DOMAIN}"
 echo "MTProxy secret:   ${MTPROXY_SECRET}"

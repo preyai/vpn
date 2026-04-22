@@ -48,12 +48,13 @@ All settings live in `.env` (copied from `.env.example` by `setup.sh`).
 | `AWG_PORT` | AmneziaWG UDP port (default: `51820`) |
 | `XRAY_PORT` | VLESS/Reality TCP port (default: `443`) |
 | `MTPROXY_PORT` | MTProxy TCP port (default: `8443`) |
+| `MTPROXY_DOMAIN` | Fronting hostname embedded into the MTProxy secret |
 | `MAX_WG_CONFIGS` | Max WireGuard configs per user (default: `5`) |
 | `MAX_XRAY_CONFIGS` | Max VLESS configs per user (default: `5`) |
 | `CREATION_COOLDOWN_SECS` | Cooldown between config creations (default: `15`) |
 
-`XRAY_REALITY_*` and `MTPROXY_SECRET` are generated automatically by `setup.sh`.
-`MTPROXY_SECRET` for the bundled `mtg` container is a plain 32-character hex string.
+`XRAY_REALITY_*`, `MTPROXY_DOMAIN`, and `MTPROXY_SECRET` are generated automatically by `setup.sh`.
+For `nineseconds/mtg:2`, the secret must be an `ee...` hex secret with an embedded fronting hostname, matching the upstream `mtg generate-secret --hex <domain>` format.
 
 ## Bot Commands
 
