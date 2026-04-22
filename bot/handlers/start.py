@@ -1,7 +1,8 @@
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
 
+from keyboards import main_keyboard
 from middlewares.auth import is_group_member
 import config as cfg
 from utils import md
@@ -12,12 +13,11 @@ HELP_TEXT = """
 *Доступные команды:*
 
 *WireGuard \\(AmneziaWG\\):*
-/new\_wg \[название\] — создать конфиг
-/my\_configs — список конфигов с удалением
-/resend — повторно получить конфиг или ссылку
+/new\_wg — создать конфиг
+/my\_configs — список конфигов
 
 *VLESS / Reality:*
-/new\_xray \[название\] — создать конфиг
+/new\_xray — создать конфиг
 
 *Прокси для Telegram:*
 /mtproxy — ссылка на MTProxy
@@ -42,19 +42,22 @@ async def cmd_start(message: Message) -> None:
         return
 
     await message.answer(
-        f"👋 Привет, *{md(user.full_name)}*!\n\n"
-        f"Этот бот управляет твоими VPN-конфигурациями.\n"
+        f"👋 Привет, *{md(user.full_name)}*\\!\n\n"
+        f"Этот бот управляет твоими VPN\\-конфигурациями\\.\n"
+        f"Используй кнопки меню или команды ниже\\.\n"
         f"{HELP_TEXT}",
         parse_mode="MarkdownV2",
+        reply_markup=main_keyboard(),
     )
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
-    await message.answer(HELP_TEXT, parse_mode="MarkdownV2")
+    await message.answer(HELP_TEXT, parse_mode="MarkdownV2", reply_markup=main_keyboard())
 
 
 @router.message(Command("mtproxy"))
+@router.message(F.text == "📡 MTProxy")
 async def cmd_mtproxy(message: Message) -> None:
     link = (
         f"tg://proxy?server={cfg.SERVER_IP}"

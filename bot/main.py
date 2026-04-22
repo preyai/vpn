@@ -4,6 +4,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
 
 import config as cfg
 import database as db
@@ -25,7 +26,7 @@ async def main() -> None:
         token=cfg.BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    dp = Dispatcher()
+    dp = Dispatcher(storage=MemoryStorage())
 
     dp.message.middleware(AuthMiddleware())
     dp.callback_query.middleware(AuthMiddleware())

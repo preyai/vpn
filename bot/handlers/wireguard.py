@@ -4,6 +4,7 @@ import logging
 import qrcode
 from aiogram import Router, F
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -12,22 +13,35 @@ from aiogram.types import (
 
 import config as cfg
 import database as db
+from keyboards import main_keyboard, cancel_keyboard
 from services import wireguard as wg_svc
 from services import rate_limit
+from states import WGCreate
 from utils import md
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 
-def _wg_list_keyboard(configs: list[dict]) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=f"🗑 {c['name']} ({c['ip_address']})",
-            callback_data=f"del_wg:{c['id']}",
-        )]
-        for c in configs
-    ])
+def _configs_keyboard(wg_cfgs: list[dict], xray_cfgs: list[dict]) -> InlineKeyboardMarkup:
+    rows = []
+    for c in wg_cfgs:
+        rows.append([
+            InlineKeyboardButton(
+                text=f"🔒 {c['name']} ({c['ip_address']})",
+                callback_data=f"resend_wg:{c['id']}",
+            ),
+            InlineKeyboardButton(text="🗑", callback_data=f"del_wg:{c['id']}"),
+        ])
+    for c in xray_cfgs:
+        rows.append([
+            InlineKeyboardButton(
+                text=f"⚡ {c['name']}",
+                callback_data=f"resend_xray:{c['id']}",
+            ),
+            InlineKeyboardButton(text="🗑", callback_data=f"del_xray:{c['id']}"),
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _confirm_keyboard(action: str, config_id: int) -> InlineKeyboardMarkup:
@@ -37,11 +51,11 @@ def _confirm_keyboard(action: str, config_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
-@router.message(Command("new_wg"))
-async def cmd_new_wg(message: Message) -> None:
-    args = message.text.split(maxsplit=1)
-    name = args[1].strip()[:50] if len(args) > 1 else "WireGuard"
+# ── /new_wg — start FSM ───────────────────────────────────────────────────────
 
+@router.message(Command("new_wg"))
+@router.message(F.text == "🔒 Новый WG")
+async def cmd_new_wg(message: Message, state: FSMContext) -> None:
     db_user = await db.get_user(message.from_user.id)
 
     remaining = rate_limit.check_cooldown(message.from_user.id)
@@ -53,7 +67,35 @@ async def cmd_new_wg(message: Message) -> None:
         await message.answer(f"❌ Максимум {cfg.MAX_WG_CONFIGS} WireGuard конфигов на пользователя.")
         return
 
-    await message.answer("⏳ Создаю конфиг…")
+    await state.set_state(WGCreate.name)
+    await message.answer(
+        "🔒 *Новый WireGuard конфиг*\n\nВведи название \\(например: _Home PC_, _Phone_\\):",
+        parse_mode="MarkdownV2",
+        reply_markup=cancel_keyboard(),
+    )
+
+
+@router.message(WGCreate.name)
+async def cmd_new_wg_name(message: Message, state: FSMContext) -> None:
+    if message.text == "❌ Отмена":
+        await state.clear()
+        await message.answer("✖️ Отменено.", reply_markup=main_keyboard())
+        return
+
+    name = message.text.strip()[:50] or "WireGuard"
+    await state.clear()
+
+    db_user = await db.get_user(message.from_user.id)
+
+    remaining = rate_limit.check_cooldown(message.from_user.id)
+    if remaining > 0:
+        await message.answer(
+            f"⏳ Подожди {remaining:.0f} сек. перед созданием нового конфига.",
+            reply_markup=main_keyboard(),
+        )
+        return
+
+    await message.answer("⏳ Создаю конфиг…", reply_markup=main_keyboard())
 
     try:
         conf_text = await wg_svc.create_peer(db_user["id"], name)
@@ -84,7 +126,10 @@ async def cmd_new_wg(message: Message) -> None:
     )
 
 
+# ── /my_configs — unified view ────────────────────────────────────────────────
+
 @router.message(Command("my_configs"))
+@router.message(F.text == "📁 Мои конфиги")
 async def cmd_my_configs(message: Message) -> None:
     db_user = await db.get_user(message.from_user.id)
     wg_cfgs   = await db.get_wg_configs(db_user["id"])
@@ -92,27 +137,23 @@ async def cmd_my_configs(message: Message) -> None:
 
     if not wg_cfgs and not xray_cfgs:
         await message.answer(
-            "У тебя нет активных конфигов\\. Создай через /new\\_wg или /new\\_xray\\.",
+            "У тебя нет активных конфигов\\.\n\nСоздай через кнопки ниже\\.",
             parse_mode="MarkdownV2",
         )
         return
 
+    lines = ["📁 *Твои конфиги*\n"]
     if wg_cfgs:
-        await message.answer(
-            "🔒 *WireGuard конфиги* — нажми для удаления:",
-            reply_markup=_wg_list_keyboard(wg_cfgs),
-            parse_mode="MarkdownV2",
-        )
-
+        lines.append(f"🔒 WireGuard: {len(wg_cfgs)}")
     if xray_cfgs:
-        await message.answer(
-            "⚡ *VLESS конфиги* — нажми для удаления:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=f"🗑 {c['name']}", callback_data=f"del_xray:{c['id']}")]
-                for c in xray_cfgs
-            ]),
-            parse_mode="MarkdownV2",
-        )
+        lines.append(f"⚡ VLESS/Reality: {len(xray_cfgs)}")
+    lines.append("\n_Нажми на конфиг — получить повторно_\n_🗑 — удалить_")
+
+    await message.answer(
+        "\n".join(lines),
+        parse_mode="MarkdownV2",
+        reply_markup=_configs_keyboard(wg_cfgs, xray_cfgs),
+    )
 
 
 # ── Delete WG — step 1: confirm ───────────────────────────────────────────────

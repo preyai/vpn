@@ -4,6 +4,7 @@ import logging
 import qrcode
 from aiogram import Router, F
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -12,8 +13,10 @@ from aiogram.types import (
 
 import config as cfg
 import database as db
+from keyboards import main_keyboard, cancel_keyboard
 from services import xray_service as xray_svc
 from services import rate_limit
+from states import XrayCreate
 from utils import md
 
 logger = logging.getLogger(__name__)
@@ -27,11 +30,11 @@ def _confirm_keyboard(config_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
-@router.message(Command("new_xray"))
-async def cmd_new_xray(message: Message) -> None:
-    args = message.text.split(maxsplit=1)
-    name = args[1].strip()[:50] if len(args) > 1 else "VLESS"
+# ── /new_xray — start FSM ─────────────────────────────────────────────────────
 
+@router.message(Command("new_xray"))
+@router.message(F.text == "⚡ Новый VLESS")
+async def cmd_new_xray(message: Message, state: FSMContext) -> None:
     db_user = await db.get_user(message.from_user.id)
 
     remaining = rate_limit.check_cooldown(message.from_user.id)
@@ -43,7 +46,35 @@ async def cmd_new_xray(message: Message) -> None:
         await message.answer(f"❌ Максимум {cfg.MAX_XRAY_CONFIGS} VLESS конфигов на пользователя.")
         return
 
-    await message.answer("⏳ Создаю конфиг, применяю изменения в Xray…")
+    await state.set_state(XrayCreate.name)
+    await message.answer(
+        "⚡ *Новый VLESS/Reality конфиг*\n\nВведи название \\(например: _Phone_, _Laptop_\\):",
+        parse_mode="MarkdownV2",
+        reply_markup=cancel_keyboard(),
+    )
+
+
+@router.message(XrayCreate.name)
+async def cmd_new_xray_name(message: Message, state: FSMContext) -> None:
+    if message.text == "❌ Отмена":
+        await state.clear()
+        await message.answer("✖️ Отменено.", reply_markup=main_keyboard())
+        return
+
+    name = message.text.strip()[:50] or "VLESS"
+    await state.clear()
+
+    db_user = await db.get_user(message.from_user.id)
+
+    remaining = rate_limit.check_cooldown(message.from_user.id)
+    if remaining > 0:
+        await message.answer(
+            f"⏳ Подожди {remaining:.0f} сек. перед созданием нового конфига.",
+            reply_markup=main_keyboard(),
+        )
+        return
+
+    await message.answer("⏳ Создаю конфиг, применяю изменения в Xray…", reply_markup=main_keyboard())
 
     try:
         link = await xray_svc.create_vless_config(db_user["id"], name)
