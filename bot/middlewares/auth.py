@@ -10,8 +10,12 @@ import database as db
 async def is_group_member(bot, user_id: int) -> bool:
     try:
         member = await bot.get_chat_member(cfg.GROUP_ID, user_id)
-        return member.status not in (ChatMemberStatus.KICKED, ChatMemberStatus.LEFT, ChatMemberStatus.BANNED)
-    except Exception:
+        return member.status not in (
+            ChatMemberStatus.KICKED,
+            ChatMemberStatus.LEFT,
+        )
+    except Exception as e:
+        print(f"[AuthMiddleware] get_chat_member error: {e}")
         return False
 
 

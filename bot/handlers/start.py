@@ -9,7 +9,7 @@ from utils import md
 
 router = Router()
 
-HELP_TEXT = """
+HELP_TEXT = r"""
 *Доступные команды:*
 
 *WireGuard \\(AmneziaWG\\):*

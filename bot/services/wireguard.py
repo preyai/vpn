@@ -17,6 +17,17 @@ logger = logging.getLogger(__name__)
 
 # Serialises all WG config file operations — prevents concurrent race conditions
 _lock = asyncio.Lock()
+_WG_QUICK_ONLY_INTERFACE_KEYS = {
+    "Address",
+    "DNS",
+    "MTU",
+    "Table",
+    "PreUp",
+    "PostUp",
+    "PreDown",
+    "PostDown",
+    "SaveConfig",
+}
 
 
 # ── Key helpers ───────────────────────────────────────────────────────────────
@@ -55,11 +66,41 @@ def _append_config(text: str) -> None:
         f.write(text)
 
 
+def _build_syncconf_text(text: str) -> str:
+    lines: list[str] = []
+    section: str | None = None
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line
+            lines.append(line)
+            continue
+        if "=" not in line:
+            continue
+
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+
+        if section == "[Interface]" and key in _WG_QUICK_ONLY_INTERFACE_KEYS:
+            continue
+
+        lines.append(f"{key} = {value}")
+
+    return "\n".join(lines) + "\n"
+
+
 def _do_syncconf() -> None:
+    runtime_config_path = Path(cfg.WG_CONFIG_PATH).with_name("wg0.syncconf")
+    runtime_config_path.write_text(_build_syncconf_text(_read_config()))
+
     client = docker.from_env()
     container = client.containers.get(cfg.AWG_CONTAINER_NAME)
     result = container.exec_run(
-        "awg syncconf wg0 /etc/amneziawg/wg0.conf", timeout=10
+        f"awg syncconf wg0 /etc/amneziawg/{runtime_config_path.name}", timeout=10
     )
     if result.exit_code != 0:
         raise RuntimeError(f"awg syncconf failed: {result.output.decode()}")
