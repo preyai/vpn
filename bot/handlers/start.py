@@ -1,10 +1,10 @@
-from aiogram import Router, F
-from aiogram.filters import CommandStart, Command
+from aiogram import F, Router
+from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 
+import config as cfg
 from keyboards import main_keyboard
 from middlewares.auth import is_group_member
-import config as cfg
 from utils import md
 
 router = Router()
@@ -12,8 +12,8 @@ router = Router()
 HELP_TEXT = r"""
 *Доступные команды:*
 
-*WireGuard \\(AmneziaWG\\):*
-/new\\_wg — создать конфиг
+*WireGuard \(AmneziaWG\):*
+/new\_wg — создать конфиг
 /my\_configs — список конфигов
 
 *VLESS / Reality:*
@@ -43,8 +43,8 @@ async def cmd_start(message: Message) -> None:
 
     await message.answer(
         f"👋 Привет, *{md(user.full_name)}*\\!\n\n"
-        f"Этот бот управляет твоими VPN\\-конфигурациями\\.\n"
-        f"Используй кнопки меню или команды ниже\\.\n"
+        "Этот бот управляет твоими VPN\\-конфигурациями\\.\n"
+        "Используй кнопки меню или команды ниже\\.\n"
         f"{HELP_TEXT}",
         parse_mode="MarkdownV2",
         reply_markup=main_keyboard(),
