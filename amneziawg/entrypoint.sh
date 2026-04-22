@@ -5,8 +5,8 @@ set -e
 modprobe amneziawg 2>/dev/null || echo "[warn] amneziawg module not found, falling back to wireguard"
 modprobe wireguard 2>/dev/null || true
 
-# Enable IP forwarding
-echo 1 > /proc/sys/net/ipv4/ip_forward
+# Enable IP forwarding (may be read-only on WSL2/Docker Desktop; sysctls handle it)
+echo 1 > /proc/sys/net/ipv4/ip_forward || true
 
 CONFIG=/etc/amneziawg/wg0.conf
 

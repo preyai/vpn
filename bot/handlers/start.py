@@ -13,7 +13,7 @@ HELP_TEXT = """
 *Доступные команды:*
 
 *WireGuard \\(AmneziaWG\\):*
-/new\_wg — создать конфиг
+/new\\_wg — создать конфиг
 /my\_configs — список конфигов
 
 *VLESS / Reality:*

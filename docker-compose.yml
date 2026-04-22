@@ -57,7 +57,7 @@ services:
     container_name: mtproxy
     ports:
       - "${MTPROXY_PORT:-8443}:3128"
-    command: run ${MTPROXY_SECRET} 0.0.0.0:3128
+    command: simple-run ${MTPROXY_SECRET} 0.0.0.0:3128
     restart: unless-stopped
 
   bot:
