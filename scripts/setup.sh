@@ -80,9 +80,18 @@ info "WireGuard config created."
 
 # --- Generate Xray Reality keys ---
 info "Generating Xray Reality keys..."
-XRAY_KEYS=$(docker run --rm ghcr.io/xtls/xray-core:latest xray x25519 2>/dev/null)
-XRAY_PRIVATE_KEY=$(echo "$XRAY_KEYS" | grep "Private key:" | awk '{print $NF}')
-XRAY_PUBLIC_KEY=$(echo "$XRAY_KEYS"  | grep "Public key:"  | awk '{print $NF}')
+# X25519 keys via openssl + python3 — no Docker image required
+XRAY_KEYS=$(python3 - <<'PYEOF'
+import base64, subprocess
+pem = subprocess.check_output(['openssl', 'genpkey', '-algorithm', 'X25519'], stderr=subprocess.DEVNULL)
+priv_der = subprocess.check_output(['openssl', 'pkey', '-outform', 'DER'], input=pem, stderr=subprocess.DEVNULL)
+pub_der  = subprocess.check_output(['openssl', 'pkey', '-pubout', '-outform', 'DER'], input=pem, stderr=subprocess.DEVNULL)
+print(base64.b64encode(priv_der[-32:]).decode())
+print(base64.b64encode(pub_der[-32:]).decode())
+PYEOF
+)
+XRAY_PRIVATE_KEY=$(echo "$XRAY_KEYS" | sed -n '1p')
+XRAY_PUBLIC_KEY=$(echo "$XRAY_KEYS"  | sed -n '2p')
 XRAY_SHORT_ID=$(openssl rand -hex 4)
 
 # --- Generate Xray config ---
