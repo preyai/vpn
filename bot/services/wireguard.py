@@ -99,9 +99,7 @@ def _do_syncconf() -> None:
 
     client = docker.from_env()
     container = client.containers.get(cfg.AWG_CONTAINER_NAME)
-    result = container.exec_run(
-        f"awg syncconf wg0 /etc/amneziawg/{runtime_config_path.name}", timeout=10
-    )
+    result = container.exec_run(f"awg syncconf wg0 /etc/amneziawg/{runtime_config_path.name}")
     if result.exit_code != 0:
         raise RuntimeError(f"awg syncconf failed: {result.output.decode()}")
 

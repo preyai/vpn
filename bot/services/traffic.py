@@ -36,7 +36,7 @@ def format_handshake(ts: int) -> str:
 def _exec_sync(container_name: str, cmd: str) -> str:
     client = docker.from_env()
     container = client.containers.get(container_name)
-    result = container.exec_run(["sh", "-c", cmd], timeout=10)
+    result = container.exec_run(["sh", "-c", cmd])
     return result.output.decode("utf-8", errors="replace")
 
 

@@ -53,6 +53,7 @@ All settings live in `.env` (copied from `.env.example` by `setup.sh`).
 | `CREATION_COOLDOWN_SECS` | Cooldown between config creations (default: `15`) |
 
 `XRAY_REALITY_*` and `MTPROXY_SECRET` are generated automatically by `setup.sh`.
+`MTPROXY_SECRET` for the bundled `mtg` container is a plain 32-character hex string.
 
 ## Bot Commands
 
