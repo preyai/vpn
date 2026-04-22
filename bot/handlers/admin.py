@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -5,8 +7,9 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 import config as cfg
 import database as db
 from services import xray_service as xray_svc
-from services import wireguard as wg_svc
+from utils import md
 
+logger = logging.getLogger(__name__)
 router = Router()
 
 
@@ -26,16 +29,22 @@ async def cmd_admin_users(message: Message) -> None:
 
     lines = ["👥 *Все пользователи:*\n"]
     for u in users:
-        name = u["full_name"] or u["username"] or "—"
+        name = md(u["full_name"] or u["username"] or "—")
         status = "✅" if u["is_active"] else "🚫"
-        username = f"@{u['username']}" if u["username"] else f"id:{u['telegram_id']}"
-        lines.append(f"{status} {name} ({username}) — id `{u['telegram_id']}`")
+        username = md(f"@{u['username']}") if u["username"] else f"id:{u['telegram_id']}"
+        lines.append(f"{status} {name} \\({username}\\) — id `{u['telegram_id']}`")
 
     buttons = [
         [
-            InlineKeyboardButton(text=f"🚫 Заблокировать {u['telegram_id']}", callback_data=f"admin_block:{u['telegram_id']}")
+            InlineKeyboardButton(
+                text=f"🚫 {u['telegram_id']}",
+                callback_data=f"admin_block:{u['telegram_id']}",
+            )
             if u["is_active"]
-            else InlineKeyboardButton(text=f"✅ Разблокировать {u['telegram_id']}", callback_data=f"admin_unblock:{u['telegram_id']}")
+            else InlineKeyboardButton(
+                text=f"✅ {u['telegram_id']}",
+                callback_data=f"admin_unblock:{u['telegram_id']}",
+            )
         ]
         for u in users
         if u["telegram_id"] not in cfg.ADMIN_IDS
@@ -54,10 +63,18 @@ async def cb_admin_block(callback: CallbackQuery) -> None:
         await callback.answer("⛔ Нет доступа.", show_alert=True)
         return
 
-    target_id = int(callback.data.split(":")[1])
+    parts = callback.data.split(":")
+    if len(parts) != 2 or not parts[1].lstrip("-").isdigit():
+        await callback.answer("Неверный запрос.", show_alert=True)
+        return
+
+    target_id = int(parts[1])
     await db.set_user_active(target_id, False)
+    logger.info("Admin %s blocked user %s", callback.from_user.id, target_id)
     await callback.answer(f"Пользователь {target_id} заблокирован.")
-    await callback.message.edit_text(f"🚫 Пользователь `{target_id}` заблокирован.", parse_mode="MarkdownV2")
+    await callback.message.edit_text(
+        f"🚫 Пользователь `{target_id}` заблокирован\\.", parse_mode="MarkdownV2"
+    )
 
 
 @router.callback_query(F.data.startswith("admin_unblock:"))
@@ -66,20 +83,28 @@ async def cb_admin_unblock(callback: CallbackQuery) -> None:
         await callback.answer("⛔ Нет доступа.", show_alert=True)
         return
 
-    target_id = int(callback.data.split(":")[1])
+    parts = callback.data.split(":")
+    if len(parts) != 2 or not parts[1].lstrip("-").isdigit():
+        await callback.answer("Неверный запрос.", show_alert=True)
+        return
+
+    target_id = int(parts[1])
     await db.set_user_active(target_id, True)
+    logger.info("Admin %s unblocked user %s", callback.from_user.id, target_id)
     await callback.answer(f"Пользователь {target_id} разблокирован.")
-    await callback.message.edit_text(f"✅ Пользователь `{target_id}` разблокирован.", parse_mode="MarkdownV2")
+    await callback.message.edit_text(
+        f"✅ Пользователь `{target_id}` разблокирован\\.", parse_mode="MarkdownV2"
+    )
 
 
 @router.message(Command("admin_rebuild_xray"))
 async def cmd_admin_rebuild_xray(message: Message) -> None:
-    """Rebuilds Xray config from DB. Useful after manual DB changes."""
     if not _is_admin(message.from_user.id):
         return
-    await message.answer("⏳ Пересобираю конфиг Xray из БД...")
+    await message.answer("⏳ Пересобираю конфиг Xray из БД…")
     try:
         await xray_svc.rebuild_xray_config_from_db()
-        await message.answer("✅ Готово. Xray перезапущен.")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}")
+        await message.answer("✅ Готово\\. Xray перезапущен\\.", parse_mode="MarkdownV2")
+    except Exception:
+        logger.exception("rebuild_xray_config_from_db failed")
+        await message.answer("❌ Ошибка\\. Подробности в логах\\.", parse_mode="MarkdownV2")

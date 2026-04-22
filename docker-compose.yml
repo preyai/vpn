@@ -1,4 +1,16 @@
 services:
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: docker_socket_proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1   # allow GET /containers/*
+      EXEC: 1         # allow creating and running exec sessions
+      KILL: 1         # allow sending signals (SIGHUP for xray reload)
+      POST: 1         # allow POST requests required by exec and kill
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     container_name: vpn_db
@@ -41,14 +53,11 @@ services:
     restart: unless-stopped
 
   mtproxy:
-    image: telegrammessenger/proxy:latest
+    image: ghcr.io/9seconds/mtg/mtg:2
     container_name: mtproxy
     ports:
-      - "${MTPROXY_PORT:-8443}:443"
-    environment:
-      - SECRET=${MTPROXY_SECRET}
-    volumes:
-      - mtproxy_data:/data
+      - "${MTPROXY_PORT:-8443}:3128"
+    command: run ${MTPROXY_SECRET} 0.0.0.0:3128
     restart: unless-stopped
 
   bot:
@@ -57,9 +66,12 @@ services:
     volumes:
       - ./amneziawg/config:/etc/amneziawg
       - ./xray:/etc/xray
-      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DOCKER_HOST: tcp://docker_socket_proxy:2375
     env_file: .env
     depends_on:
+      docker-socket-proxy:
+        condition: service_started
       postgres:
         condition: service_healthy
       amneziawg:
@@ -71,5 +83,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  mtproxy_data:
   postgres_data:

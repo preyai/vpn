@@ -8,7 +8,7 @@ from aiogram.enums import ParseMode
 import config as cfg
 import database as db
 from middlewares.auth import AuthMiddleware
-from handlers import start, wireguard, xray_handler, stats, admin
+from handlers import start, wireguard, xray_handler, stats, admin, resend
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +33,7 @@ async def main() -> None:
     dp.include_router(start.router)
     dp.include_router(wireguard.router)
     dp.include_router(xray_handler.router)
+    dp.include_router(resend.router)
     dp.include_router(stats.router)
     dp.include_router(admin.router)
 

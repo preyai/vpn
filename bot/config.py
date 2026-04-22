@@ -25,3 +25,8 @@ XRAY_CONTAINER_NAME    = "xray"
 WG_SERVER_IP           = "10.8.0.1"
 WG_SUBNET_BASE         = "10.8.0"
 WG_MAX_PEERS           = 250
+
+# Rate limiting
+CREATION_COOLDOWN_SECS = int(os.environ.get("CREATION_COOLDOWN_SECS", "15"))
+MAX_WG_CONFIGS         = int(os.environ.get("MAX_WG_CONFIGS", "5"))
+MAX_XRAY_CONFIGS       = int(os.environ.get("MAX_XRAY_CONFIGS", "5"))

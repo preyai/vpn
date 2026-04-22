@@ -4,21 +4,23 @@ from aiogram.types import Message
 
 from middlewares.auth import is_group_member
 import config as cfg
+from utils import md
 
 router = Router()
 
 HELP_TEXT = """
 *Доступные команды:*
 
-*WireGuard (AmneziaWG):*
+*WireGuard \\(AmneziaWG\\):*
 /new\_wg \[название\] — создать конфиг
-/my\_configs — список моих конфигов
+/my\_configs — список конфигов с удалением
+/resend — повторно получить конфиг или ссылку
 
 *VLESS / Reality:*
 /new\_xray \[название\] — создать конфиг
 
 *Прокси для Telegram:*
-/mtproxy — получить ссылку на MTProxy
+/mtproxy — ссылка на MTProxy
 
 *Статистика:*
 /traffic — трафик по всем конфигам
@@ -40,7 +42,7 @@ async def cmd_start(message: Message) -> None:
         return
 
     await message.answer(
-        f"👋 Привет, *{user.full_name}*!\n\n"
+        f"👋 Привет, *{md(user.full_name)}*!\n\n"
         f"Этот бот управляет твоими VPN-конфигурациями.\n"
         f"{HELP_TEXT}",
         parse_mode="MarkdownV2",

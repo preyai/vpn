@@ -132,8 +132,11 @@ EOF
 
 info "Xray config created."
 
-# --- Generate MTProxy secret (dd prefix = FakeTLS) ---
-MTPROXY_SECRET="dd$(openssl rand -hex 15)"
+# --- Generate MTProxy secret ---
+# dd prefix = DD-mode (obfuscated); 32 hex chars = 16 bytes of actual secret
+# For FakeTLS (ee prefix), run manually:
+#   docker run --rm ghcr.io/9seconds/mtg/mtg:2 generate-secret --hex tls google.com
+MTPROXY_SECRET="dd$(openssl rand -hex 16)"
 
 # --- Generate PostgreSQL password ---
 POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
