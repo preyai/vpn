@@ -53,7 +53,7 @@ services:
     restart: unless-stopped
 
   mtproxy:
-    image: ghcr.io/9seconds/mtg/mtg:2
+    image: nineseconds/mtg:2
     container_name: mtproxy
     ports:
       - "${MTPROXY_PORT:-8443}:3128"
