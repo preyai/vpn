@@ -44,9 +44,14 @@ if [ "$USE_DOCKER_FOR_WG_KEYS" -eq 0 ]; then
     WG_PRIVATE_KEY=$(wg genkey)
     WG_PUBLIC_KEY=$(echo "$WG_PRIVATE_KEY" | wg pubkey)
 else
-    WG_KEYS=$(docker run --rm lscr.io/linuxserver/wireguard:latest bash -c "wg genkey | tee /tmp/priv | wg pubkey; cat /tmp/priv" 2>/dev/null | tr '\n' ':')
-    WG_PUBLIC_KEY=$(echo "$WG_KEYS" | cut -d: -f1)
-    WG_PRIVATE_KEY=$(echo "$WG_KEYS" | cut -d: -f2)
+    WG_KEYS=$(docker run --rm alpine sh -c '
+        apk add --quiet wireguard-tools >/dev/null 2>&1
+        PRIV=$(wg genkey)
+        echo "$PRIV"
+        echo "$PRIV" | wg pubkey
+    ')
+    WG_PRIVATE_KEY=$(echo "$WG_KEYS" | sed -n '1p')
+    WG_PUBLIC_KEY=$(echo "$WG_KEYS" | sed -n '2p')
 fi
 
 # --- Create AmneziaWG server config ---
