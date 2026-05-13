@@ -38,6 +38,10 @@ fi
 
 cp .env.example .env
 
+# Read configurable SNI/domain values — user may edit .env.example before running setup
+XRAY_REALITY_SNI=$(grep -m1 '^XRAY_REALITY_SNI=' .env | cut -d= -f2-)
+MTPROXY_DOMAIN=$(grep -m1 '^MTPROXY_DOMAIN=' .env | cut -d= -f2-)
+
 # --- Generate WireGuard server keys ---
 info "Generating WireGuard server keys..."
 if [ "$USE_DOCKER_FOR_WG_KEYS" -eq 0 ]; then
@@ -57,6 +61,19 @@ fi
 # --- Create AmneziaWG server config ---
 mkdir -p amneziawg/config
 
+# Generate random AmneziaWG obfuscation parameters
+read AWG_JC AWG_JMIN AWG_JMAX AWG_S1 AWG_S2 AWG_H1 AWG_H2 AWG_H3 AWG_H4 < <(python3 - <<'PYEOF'
+import random
+jc   = random.randint(3, 10)
+jmin = random.randint(40, 100)
+jmax = random.randint(jmin + 10, 1400)
+s1   = random.randint(15, 150)
+s2   = random.randint(15, 150)
+h    = random.sample(range(1, 2**32), 4)
+print(jc, jmin, jmax, s1, s2, *h)
+PYEOF
+)
+
 cat > amneziawg/config/wg0.conf << EOF
 [Interface]
 PrivateKey = ${WG_PRIVATE_KEY}
@@ -64,15 +81,15 @@ Address = 10.8.0.1/24
 ListenPort = 51820
 PostUp = ETH=\$(ip route show default | awk '/default/{print \$5}' | head -1); iptables -A FORWARD -i wg0 -j ACCEPT; iptables -A FORWARD -o wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o \$ETH -j MASQUERADE
 PostDown = ETH=\$(ip route show default | awk '/default/{print \$5}' | head -1); iptables -D FORWARD -i wg0 -j ACCEPT; iptables -D FORWARD -o wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o \$ETH -j MASQUERADE
-Jc = 4
-Jmin = 40
-Jmax = 70
-S1 = 0
-S2 = 0
-H1 = 1
-H2 = 2
-H3 = 3
-H4 = 4
+Jc = ${AWG_JC}
+Jmin = ${AWG_JMIN}
+Jmax = ${AWG_JMAX}
+S1 = ${AWG_S1}
+S2 = ${AWG_S2}
+H1 = ${AWG_H1}
+H2 = ${AWG_H2}
+H3 = ${AWG_H3}
+H4 = ${AWG_H4}
 EOF
 
 chmod 600 amneziawg/config/wg0.conf
@@ -117,9 +134,9 @@ cat > xray/config.json << EOF
         "security": "reality",
         "realitySettings": {
           "show": false,
-          "dest": "www.microsoft.com:443",
+          "dest": "${XRAY_REALITY_SNI}:443",
           "xver": 0,
-          "serverNames": ["www.microsoft.com"],
+          "serverNames": ["${XRAY_REALITY_SNI}"],
           "privateKey": "${XRAY_PRIVATE_KEY}",
           "shortIds": ["${XRAY_SHORT_ID}"]
         }
@@ -149,7 +166,6 @@ info "Xray config created."
 # --- Generate MTProxy secret ---
 # mtg v2 expects an ee-prefixed secret that embeds a fronting hostname.
 # See: mtg generate-secret --hex google.com
-MTPROXY_DOMAIN="www.microsoft.com"
 MTPROXY_SECRET=$(MTPROXY_DOMAIN="$MTPROXY_DOMAIN" python3 - <<'PYEOF'
 import os, secrets
 
