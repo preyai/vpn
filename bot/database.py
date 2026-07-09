@@ -132,7 +132,7 @@ async def delete_wg_config(config_id: int, user_id: int) -> dict | None:
 
 async def get_all_wg_ips() -> list[str]:
     async with _pool_().acquire() as conn:
-        rows = await conn.fetch("SELECT ip_address FROM wg_configs WHERE is_active = TRUE")
+        rows = await conn.fetch("SELECT ip_address FROM wg_configs")
         return [r["ip_address"] for r in rows]
 
 
