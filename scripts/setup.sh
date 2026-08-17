@@ -103,8 +103,8 @@ import base64, subprocess
 pem = subprocess.check_output(['openssl', 'genpkey', '-algorithm', 'X25519'], stderr=subprocess.DEVNULL)
 priv_der = subprocess.check_output(['openssl', 'pkey', '-outform', 'DER'], input=pem, stderr=subprocess.DEVNULL)
 pub_der  = subprocess.check_output(['openssl', 'pkey', '-pubout', '-outform', 'DER'], input=pem, stderr=subprocess.DEVNULL)
-print(base64.b64encode(priv_der[-32:]).decode())
-print(base64.b64encode(pub_der[-32:]).decode())
+print(base64.urlsafe_b64encode(priv_der[-32:]).rstrip(b'=').decode())
+print(base64.urlsafe_b64encode(pub_der[-32:]).rstrip(b'=').decode())
 PYEOF
 )
 XRAY_PRIVATE_KEY=$(echo "$XRAY_KEYS" | sed -n '1p')

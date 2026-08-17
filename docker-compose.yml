@@ -50,7 +50,7 @@ services:
     image: ghcr.io/xtls/xray-core:latest
     container_name: xray
     volumes:
-      - ./xray:/etc/xray
+      - ./xray:/usr/local/etc/xray
     ports:
       - "${XRAY_PORT:-443}:443"
     restart: unless-stopped

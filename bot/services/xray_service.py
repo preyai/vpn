@@ -30,16 +30,10 @@ def _write_xray_config(data: dict) -> None:
 
 
 def _do_reload_xray() -> None:
-    """Send SIGHUP — Xray reloads config.json in-process (~200 ms, no Docker overhead)."""
+    """Restart the container to pick up the new config.json (SIGHUP kills this build instead of reloading it)."""
     client = docker.from_env()
     container = client.containers.get(cfg.XRAY_CONTAINER_NAME)
-    try:
-        container.kill(signal="SIGHUP")
-    except docker.errors.APIError as e:
-        if e.response is not None and e.response.status_code == 409:
-            logger.warning("Xray container is not running; config written but not reloaded live")
-        else:
-            raise
+    container.restart(timeout=5)
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
