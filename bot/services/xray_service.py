@@ -33,7 +33,13 @@ def _do_reload_xray() -> None:
     """Send SIGHUP — Xray reloads config.json in-process (~200 ms, no Docker overhead)."""
     client = docker.from_env()
     container = client.containers.get(cfg.XRAY_CONTAINER_NAME)
-    container.kill(signal="SIGHUP")
+    try:
+        container.kill(signal="SIGHUP")
+    except docker.errors.APIError as e:
+        if e.response is not None and e.response.status_code == 409:
+            logger.warning("Xray container is not running; config written but not reloaded live")
+        else:
+            raise
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -85,11 +91,16 @@ async def create_vless_config(user_id: int, name: str) -> str:
     email = _make_email(user_id, config_id)
     await db.update_xray_email(config_id, email)
 
-    async with _lock:
-        data = await asyncio.to_thread(_read_xray_config)
-        _add_client_to_config(data, new_uuid, email)
-        await asyncio.to_thread(_write_xray_config, data)
-        await asyncio.to_thread(_do_reload_xray)
+    try:
+        async with _lock:
+            data = await asyncio.to_thread(_read_xray_config)
+            _add_client_to_config(data, new_uuid, email)
+            await asyncio.to_thread(_write_xray_config, data)
+            await asyncio.to_thread(_do_reload_xray)
+    except Exception:
+        logger.exception("Xray config write/reload failed for config_id=%s, rolling back DB", config_id)
+        await db.delete_xray_config(config_id, user_id)
+        raise
 
     logger.info("Created VLESS config id=%s for user_id=%s", config_id, user_id)
     return _build_vless_link(new_uuid, name)

@@ -161,7 +161,14 @@ async def create_peer(user_id: int, name: str) -> str:
             await asyncio.to_thread(_write_config, rolled.replace(peer_block, ""))
             raise
 
-        await db.add_wg_config(user_id, name, client_pub, client_priv, ip)
+        try:
+            await db.add_wg_config(user_id, name, client_pub, client_priv, ip)
+        except Exception:
+            logger.exception("db.add_wg_config failed after syncconf, rolling back wg config")
+            rolled = await asyncio.to_thread(_read_config)
+            await asyncio.to_thread(_write_config, rolled.replace(peer_block, ""))
+            await asyncio.to_thread(_do_syncconf)
+            raise
 
         obfs_keys = ("Jc", "Jmin", "Jmax", "S1", "S2", "H1", "H2", "H3", "H4")
         obfs_lines = "\n".join(f"{k} = {iface[k]}" for k in obfs_keys if k in iface)
