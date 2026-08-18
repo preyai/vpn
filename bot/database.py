@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS wg_configs (
     private_key TEXT NOT NULL,
     ip_address  TEXT UNIQUE NOT NULL,
     is_active   BOOLEAN DEFAULT TRUE,
+    expires_at  TIMESTAMP,
     created_at  TIMESTAMP DEFAULT NOW()
 );
 
@@ -31,8 +32,15 @@ CREATE TABLE IF NOT EXISTS xray_configs (
     uuid        TEXT UNIQUE NOT NULL,
     email       TEXT UNIQUE NOT NULL,
     is_active   BOOLEAN DEFAULT TRUE,
+    expires_at  TIMESTAMP,
     created_at  TIMESTAMP DEFAULT NOW()
 );
+"""
+
+# Migration for databases created before expires_at existed.
+MIGRATE_SCHEMA = """
+ALTER TABLE wg_configs   ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;
+ALTER TABLE xray_configs ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;
 """
 
 
@@ -41,6 +49,7 @@ async def init_db() -> None:
     _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
     async with _pool.acquire() as conn:
         await conn.execute(CREATE_SCHEMA)
+        await conn.execute(MIGRATE_SCHEMA)
 
 
 async def close_db() -> None:
@@ -136,6 +145,29 @@ async def get_all_wg_ips() -> list[str]:
         return [r["ip_address"] for r in rows]
 
 
+async def set_wg_expiry(config_id: int, expires_at) -> bool:
+    async with _pool_().acquire() as conn:
+        tag = await conn.execute(
+            "UPDATE wg_configs SET expires_at = $1 WHERE id = $2", expires_at, config_id
+        )
+        return tag.endswith(" 1")
+
+
+async def get_expired_wg_configs() -> list[dict]:
+    async with _pool_().acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM wg_configs WHERE is_active = TRUE "
+            "AND expires_at IS NOT NULL AND expires_at <= NOW()"
+        )
+        return [dict(r) for r in rows]
+
+
+async def get_all_active_wg_configs() -> list[dict]:
+    async with _pool_().acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM wg_configs WHERE is_active = TRUE")
+        return [dict(r) for r in rows]
+
+
 # ── Xray ──────────────────────────────────────────────────────────────────────
 
 async def add_xray_config(user_id: int, name: str, uuid: str, email: str) -> int:
@@ -187,4 +219,21 @@ async def delete_xray_config(config_id: int, user_id: int) -> dict | None:
 async def get_all_active_xray_configs() -> list[dict]:
     async with _pool_().acquire() as conn:
         rows = await conn.fetch("SELECT * FROM xray_configs WHERE is_active = TRUE")
+        return [dict(r) for r in rows]
+
+
+async def set_xray_expiry(config_id: int, expires_at) -> bool:
+    async with _pool_().acquire() as conn:
+        tag = await conn.execute(
+            "UPDATE xray_configs SET expires_at = $1 WHERE id = $2", expires_at, config_id
+        )
+        return tag.endswith(" 1")
+
+
+async def get_expired_xray_configs() -> list[dict]:
+    async with _pool_().acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM xray_configs WHERE is_active = TRUE "
+            "AND expires_at IS NOT NULL AND expires_at <= NOW()"
+        )
         return [dict(r) for r in rows]

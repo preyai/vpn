@@ -10,6 +10,8 @@ import config as cfg
 import database as db
 from middlewares.auth import AuthMiddleware
 from handlers import start, wireguard, xray_handler, stats, admin, resend
+from services import expiry as expiry_svc
+from services import status as status_svc
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,10 +40,15 @@ async def main() -> None:
     dp.include_router(stats.router)
     dp.include_router(admin.router)
 
+    watcher_task = asyncio.create_task(status_svc.watch_containers(bot))
+    expiry_task = asyncio.create_task(expiry_svc.sweep_expired_configs())
+
     logger.info("Starting bot polling...")
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
+        watcher_task.cancel()
+        expiry_task.cancel()
         await db.close_db()
         await bot.session.close()
 

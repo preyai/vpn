@@ -30,6 +30,7 @@ XRAY_CONFIG_PATH       = "/etc/xray/config.json"
 
 AWG_CONTAINER_NAME     = "amneziawg"
 XRAY_CONTAINER_NAME    = "xray"
+MTPROXY_CONTAINER_NAME = "mtproxy"
 
 WG_SERVER_IP           = "10.8.0.1"
 WG_SUBNET_BASE         = "10.8.0"

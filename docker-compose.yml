@@ -45,6 +45,12 @@ services:
     ports:
       - "${AWG_PORT:-51820}:51820/udp"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ip link show wg0 | grep -q UP"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   xray:
     image: ghcr.io/xtls/xray-core:latest
@@ -54,6 +60,12 @@ services:
     ports:
       - "${XRAY_PORT:-443}:443"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/xray", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   mtproxy:
     image: nineseconds/mtg:2
@@ -62,6 +74,12 @@ services:
       - "${MTPROXY_PORT:-8443}:3128"
     command: simple-run 0.0.0.0:3128 ${MTPROXY_SECRET} --prefer-ip=prefer-ipv4
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/mtg", "--version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   bot:
     build: ./bot
@@ -79,11 +97,11 @@ services:
       postgres:
         condition: service_healthy
       amneziawg:
-        condition: service_started
+        condition: service_healthy
       xray:
-        condition: service_started
+        condition: service_healthy
       mtproxy:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

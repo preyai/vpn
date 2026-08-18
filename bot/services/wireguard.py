@@ -104,6 +104,27 @@ def _do_syncconf() -> None:
         raise RuntimeError(f"awg syncconf failed: {result.output.decode()}")
 
 
+def _get_handshakes_sync() -> dict[str, int]:
+    """Returns {public_key: latest_handshake_unix_ts} (0 = never)."""
+    client = docker.from_env()
+    container = client.containers.get(cfg.AWG_CONTAINER_NAME)
+    result = container.exec_run("awg show wg0 dump")
+    if result.exit_code != 0:
+        raise RuntimeError(f"awg show dump failed: {result.output.decode()}")
+
+    handshakes: dict[str, int] = {}
+    lines = result.output.decode().splitlines()[1:]  # skip interface line
+    for line in lines:
+        fields = line.split("\t")
+        if len(fields) >= 5:
+            handshakes[fields[0]] = int(fields[4])
+    return handshakes
+
+
+async def get_peer_handshakes() -> dict[str, int]:
+    return await asyncio.to_thread(_get_handshakes_sync)
+
+
 # ── Config parsing ────────────────────────────────────────────────────────────
 
 def _parse_interface(text: str) -> dict[str, str]:
@@ -134,8 +155,17 @@ async def _next_available_ip() -> str:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _sanitize_peer_name(name: str) -> str:
+    """Strips characters that could break out of the '# {name}' comment line
+    and inject arbitrary config (newlines, section/key-value syntax)."""
+    cleaned = re.sub(r"[\x00-\x1f\x7f\[\]#=]", "", name).strip()
+    return cleaned[:50] or "WireGuard"
+
+
 async def create_peer(user_id: int, name: str) -> str:
     """Creates a WireGuard peer and returns the client .conf text."""
+    name = _sanitize_peer_name(name)
+
     async with _lock:
         config_text = await asyncio.to_thread(_read_config)
         iface = _parse_interface(config_text)
