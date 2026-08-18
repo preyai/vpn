@@ -44,6 +44,7 @@ async def main() -> None:
     watcher_task = asyncio.create_task(status_svc.watch_containers(bot))
     expiry_task = asyncio.create_task(expiry_svc.sweep_expired_configs())
     traffic_task = asyncio.create_task(traffic_svc.poll_traffic_totals())
+    live_status_task = asyncio.create_task(status_svc.live_status_updater(bot))
 
     logger.info("Starting bot polling...")
     try:
@@ -52,6 +53,7 @@ async def main() -> None:
         watcher_task.cancel()
         expiry_task.cancel()
         traffic_task.cancel()
+        live_status_task.cancel()
         await db.close_db()
         await bot.session.close()
 

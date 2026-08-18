@@ -113,32 +113,14 @@ async def cmd_admin_rebuild_xray(message: Message) -> None:
         await message.answer("❌ Ошибка\\. Подробности в логах\\.", parse_mode="MarkdownV2")
 
 
-_STATUS_ICON = {"running": "✅", "missing": "⛔", "error": "⛔"}
-_HEALTH_ICON = {"healthy": "✅", "unhealthy": "⚠️", "starting": "⏳", "n/a": ""}
-
-
 @router.message(Command("status"))
 async def cmd_status(message: Message) -> None:
     if not _is_admin(message.from_user.id):
         return
 
     await message.answer("⏳ Проверяю сервисы…")
-
-    containers = await status_svc.get_container_statuses()
-    ports = await status_svc.get_port_checks()
-
-    lines = ["🩺 *Статус сервисов*\n"]
-    for label, status, health in containers:
-        icon = _STATUS_ICON.get(status, "⚠️")
-        health_str = f" \\({md(health)}\\)" if _HEALTH_ICON.get(health) else ""
-        lines.append(f"{icon} {md(label)}: `{md(status)}`{health_str}")
-
-    lines.append("")
-    for label, ok in ports:
-        icon = "✅" if ok else "⛔"
-        lines.append(f"{icon} {md(label)}")
-
-    await message.answer("\n".join(lines), parse_mode="MarkdownV2")
+    text = await status_svc.render_status_text()
+    await message.answer(text, parse_mode="MarkdownV2")
 
 
 @router.message(Command("admin_set_expiry"))
