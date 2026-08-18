@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS xray_configs (
     traffic_down_last  BIGINT DEFAULT 0,
     created_at         TIMESTAMP DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 # Migration for databases created before expires_at/traffic totals existed.
@@ -290,3 +295,25 @@ async def get_expired_xray_configs() -> list[dict]:
             "AND expires_at IS NOT NULL AND expires_at <= NOW()"
         )
         return [dict(r) for r in rows]
+
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+async def get_setting(key: str) -> str | None:
+    async with _pool_().acquire() as conn:
+        row = await conn.fetchrow("SELECT value FROM settings WHERE key = $1", key)
+        return row["value"] if row else None
+
+
+async def set_setting(key: str, value: str) -> None:
+    async with _pool_().acquire() as conn:
+        await conn.execute(
+            """INSERT INTO settings (key, value) VALUES ($1, $2)
+               ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""",
+            key, value,
+        )
+
+
+async def delete_setting(key: str) -> None:
+    async with _pool_().acquire() as conn:
+        await conn.execute("DELETE FROM settings WHERE key = $1", key)
