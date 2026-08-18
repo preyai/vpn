@@ -12,6 +12,7 @@ from middlewares.auth import AuthMiddleware
 from handlers import start, wireguard, xray_handler, stats, admin, resend
 from services import expiry as expiry_svc
 from services import status as status_svc
+from services import traffic as traffic_svc
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,6 +43,7 @@ async def main() -> None:
 
     watcher_task = asyncio.create_task(status_svc.watch_containers(bot))
     expiry_task = asyncio.create_task(expiry_svc.sweep_expired_configs())
+    traffic_task = asyncio.create_task(traffic_svc.poll_traffic_totals())
 
     logger.info("Starting bot polling...")
     try:
@@ -49,6 +51,7 @@ async def main() -> None:
     finally:
         watcher_task.cancel()
         expiry_task.cancel()
+        traffic_task.cancel()
         await db.close_db()
         await bot.session.close()
 

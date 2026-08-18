@@ -1,12 +1,12 @@
 import asyncio
 import json
 import logging
-import shlex
 import time
 
 import docker
 
 import config as cfg
+import database as db
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +33,14 @@ def format_handshake(ts: int) -> str:
     return f"{delta // 86400} д. назад"
 
 
-def _exec_sync(container_name: str, cmd: str) -> str:
+def _exec_sync(container_name: str, cmd: list[str]) -> str:
     client = docker.from_env()
     container = client.containers.get(container_name)
-    result = container.exec_run(["sh", "-c", cmd])
+    result = container.exec_run(cmd)
     return result.output.decode("utf-8", errors="replace")
 
 
-async def _exec(container_name: str, cmd: str) -> str:
+async def _exec(container_name: str, cmd: list[str]) -> str:
     return await asyncio.to_thread(_exec_sync, container_name, cmd)
 
 
@@ -52,7 +52,7 @@ async def get_wg_peer_traffic(public_key: str) -> tuple[int, int, int]:
       4 last_handshake (unix ts, 0=never) | 5 rx | 6 tx | 7 keepalive
     """
     try:
-        output = await _exec(cfg.AWG_CONTAINER_NAME, "awg show wg0 dump")
+        output = await _exec(cfg.AWG_CONTAINER_NAME, ["awg", "show", "wg0", "dump"])
         for line in output.strip().splitlines()[1:]:  # first line = interface
             parts = line.split("\t")
             if len(parts) >= 7 and parts[0] == public_key:
@@ -68,8 +68,10 @@ async def get_wg_peer_traffic(public_key: str) -> tuple[int, int, int]:
 async def get_xray_user_traffic(email: str) -> tuple[int, int]:
     """Returns (uplink_bytes, downlink_bytes) for an Xray user."""
     try:
-        safe_email = shlex.quote(email)
-        cmd = f"xray api statsquery --server=127.0.0.1:10085 -pattern {safe_email}"
+        cmd = [
+            "/usr/local/bin/xray", "api", "statsquery",
+            "--server=127.0.0.1:10085", "-pattern", email,
+        ]
         output = await _exec(cfg.XRAY_CONTAINER_NAME, cmd)
 
         json_start = output.find("{")
@@ -89,3 +91,24 @@ async def get_xray_user_traffic(email: str) -> tuple[int, int]:
     except Exception:
         logger.exception("Failed to get Xray traffic for %s", email)
     return 0, 0
+
+
+async def _poll_once() -> None:
+    for config in await db.get_all_active_wg_configs():
+        rx, tx, _ = await get_wg_peer_traffic(config["public_key"])
+        await db.accumulate_wg_traffic(config["id"], rx, tx)
+
+    for config in await db.get_all_active_xray_configs():
+        up, down = await get_xray_user_traffic(config["email"])
+        await db.accumulate_xray_traffic(config["id"], up, down)
+
+
+async def poll_traffic_totals(interval: int = 300) -> None:
+    """Background task: periodically snapshots live counters into lifetime
+    totals in the DB, so traffic history survives container restarts."""
+    while True:
+        try:
+            await _poll_once()
+        except Exception:
+            logger.exception("poll_traffic_totals iteration failed")
+        await asyncio.sleep(interval)

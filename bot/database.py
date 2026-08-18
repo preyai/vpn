@@ -14,33 +14,51 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS wg_configs (
-    id          SERIAL PRIMARY KEY,
-    user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    name        TEXT NOT NULL,
-    public_key  TEXT UNIQUE NOT NULL,
-    private_key TEXT NOT NULL,
-    ip_address  TEXT UNIQUE NOT NULL,
-    is_active   BOOLEAN DEFAULT TRUE,
-    expires_at  TIMESTAMP,
-    created_at  TIMESTAMP DEFAULT NOW()
+    id               SERIAL PRIMARY KEY,
+    user_id          INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    name             TEXT NOT NULL,
+    public_key       TEXT UNIQUE NOT NULL,
+    private_key      TEXT NOT NULL,
+    ip_address       TEXT UNIQUE NOT NULL,
+    is_active        BOOLEAN DEFAULT TRUE,
+    expires_at       TIMESTAMP,
+    traffic_rx_total BIGINT DEFAULT 0,
+    traffic_tx_total BIGINT DEFAULT 0,
+    traffic_rx_last  BIGINT DEFAULT 0,
+    traffic_tx_last  BIGINT DEFAULT 0,
+    created_at       TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS xray_configs (
-    id          SERIAL PRIMARY KEY,
-    user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    name        TEXT NOT NULL,
-    uuid        TEXT UNIQUE NOT NULL,
-    email       TEXT UNIQUE NOT NULL,
-    is_active   BOOLEAN DEFAULT TRUE,
-    expires_at  TIMESTAMP,
-    created_at  TIMESTAMP DEFAULT NOW()
+    id                 SERIAL PRIMARY KEY,
+    user_id            INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    name               TEXT NOT NULL,
+    uuid               TEXT UNIQUE NOT NULL,
+    email              TEXT UNIQUE NOT NULL,
+    is_active          BOOLEAN DEFAULT TRUE,
+    expires_at         TIMESTAMP,
+    traffic_up_total   BIGINT DEFAULT 0,
+    traffic_down_total BIGINT DEFAULT 0,
+    traffic_up_last    BIGINT DEFAULT 0,
+    traffic_down_last  BIGINT DEFAULT 0,
+    created_at         TIMESTAMP DEFAULT NOW()
 );
 """
 
-# Migration for databases created before expires_at existed.
+# Migration for databases created before expires_at/traffic totals existed.
 MIGRATE_SCHEMA = """
 ALTER TABLE wg_configs   ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;
 ALTER TABLE xray_configs ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP;
+
+ALTER TABLE wg_configs   ADD COLUMN IF NOT EXISTS traffic_rx_total BIGINT DEFAULT 0;
+ALTER TABLE wg_configs   ADD COLUMN IF NOT EXISTS traffic_tx_total BIGINT DEFAULT 0;
+ALTER TABLE wg_configs   ADD COLUMN IF NOT EXISTS traffic_rx_last  BIGINT DEFAULT 0;
+ALTER TABLE wg_configs   ADD COLUMN IF NOT EXISTS traffic_tx_last  BIGINT DEFAULT 0;
+
+ALTER TABLE xray_configs ADD COLUMN IF NOT EXISTS traffic_up_total   BIGINT DEFAULT 0;
+ALTER TABLE xray_configs ADD COLUMN IF NOT EXISTS traffic_down_total BIGINT DEFAULT 0;
+ALTER TABLE xray_configs ADD COLUMN IF NOT EXISTS traffic_up_last    BIGINT DEFAULT 0;
+ALTER TABLE xray_configs ADD COLUMN IF NOT EXISTS traffic_down_last  BIGINT DEFAULT 0;
 """
 
 
@@ -145,6 +163,24 @@ async def get_all_wg_ips() -> list[str]:
         return [r["ip_address"] for r in rows]
 
 
+async def accumulate_wg_traffic(config_id: int, rx: int, tx: int) -> None:
+    """Adds the delta since the last observed counter value to the lifetime
+    total. If the live counter is smaller than last time (interface/container
+    restart reset it), treats the current value itself as the delta."""
+    async with _pool_().acquire() as conn:
+        await conn.execute(
+            """UPDATE wg_configs SET
+                 traffic_rx_total = traffic_rx_total +
+                     (CASE WHEN $2 >= traffic_rx_last THEN $2 - traffic_rx_last ELSE $2 END),
+                 traffic_tx_total = traffic_tx_total +
+                     (CASE WHEN $3 >= traffic_tx_last THEN $3 - traffic_tx_last ELSE $3 END),
+                 traffic_rx_last = $2,
+                 traffic_tx_last = $3
+               WHERE id = $1""",
+            config_id, rx, tx,
+        )
+
+
 async def set_wg_expiry(config_id: int, expires_at) -> bool:
     async with _pool_().acquire() as conn:
         tag = await conn.execute(
@@ -220,6 +256,23 @@ async def get_all_active_xray_configs() -> list[dict]:
     async with _pool_().acquire() as conn:
         rows = await conn.fetch("SELECT * FROM xray_configs WHERE is_active = TRUE")
         return [dict(r) for r in rows]
+
+
+async def accumulate_xray_traffic(config_id: int, up: int, down: int) -> None:
+    """Same reset-aware accumulation as accumulate_wg_traffic, for Xray's
+    uplink/downlink counters."""
+    async with _pool_().acquire() as conn:
+        await conn.execute(
+            """UPDATE xray_configs SET
+                 traffic_up_total = traffic_up_total +
+                     (CASE WHEN $2 >= traffic_up_last THEN $2 - traffic_up_last ELSE $2 END),
+                 traffic_down_total = traffic_down_total +
+                     (CASE WHEN $3 >= traffic_down_last THEN $3 - traffic_down_last ELSE $3 END),
+                 traffic_up_last = $2,
+                 traffic_down_last = $3
+               WHERE id = $1""",
+            config_id, up, down,
+        )
 
 
 async def set_xray_expiry(config_id: int, expires_at) -> bool:
