@@ -1,6 +1,8 @@
+from pathlib import Path
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message
+from aiogram.types import FSInputFile, Message
 
 import config as cfg
 from keyboards import main_keyboard
@@ -8,6 +10,8 @@ from middlewares.auth import is_group_member
 from utils import md
 
 router = Router()
+
+_DONATE_QR_PATH = Path(__file__).resolve().parent.parent / "assets" / "donate_qr.jpg"
 
 HELP_TEXT = r"""
 *Доступные команды:*
@@ -24,6 +28,9 @@ HELP_TEXT = r"""
 
 *Статистика:*
 /traffic — трафик по всем конфигам
+
+*Поддержать сервер:*
+/donate — реквизиты для перевода
 """
 
 
@@ -75,5 +82,19 @@ async def cmd_mtproxy(message: Message) -> None:
         f"[Подключить MTProxy]({web_link})\n\n"
         f"Или скопируй вручную:\n"
         f"`{link}`",
+        parse_mode="MarkdownV2",
+    )
+
+
+@router.message(Command("donate"))
+@router.message(F.text == "💛 Поддержать")
+async def cmd_donate(message: Message) -> None:
+    if not _DONATE_QR_PATH.exists():
+        await message.answer("Реквизиты временно недоступны.")
+        return
+
+    await message.answer_photo(
+        photo=FSInputFile(_DONATE_QR_PATH),
+        caption="💛 Спасибо, что пользуешься сервером\\!\n\nЕсли хочешь поддержать — вот реквизиты для перевода\\.",
         parse_mode="MarkdownV2",
     )

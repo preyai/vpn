@@ -6,7 +6,7 @@ def main_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="🔒 Новый WG"), KeyboardButton(text="⚡ Новый VLESS")],
             [KeyboardButton(text="📁 Мои конфиги"), KeyboardButton(text="📊 Трафик")],
-            [KeyboardButton(text="📡 MTProxy")],
+            [KeyboardButton(text="📡 MTProxy"), KeyboardButton(text="💛 Поддержать")],
         ],
         resize_keyboard=True,
         persistent=True,
