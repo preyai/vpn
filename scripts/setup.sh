@@ -12,6 +12,27 @@ echo ""
 # --- Dependency checks ---
 command -v docker  >/dev/null 2>&1 || error "Docker is required. Install: https://docs.docker.com/engine/install/"
 command -v openssl >/dev/null 2>&1 || error "openssl is required: apt install openssl"
+command -v python3 >/dev/null 2>&1 || error "python3 is required: apt install python3"
+
+# Asks for the bot token and detects GROUP_ID / ADMIN_IDS; skips values already in .env
+setup_telegram() {
+    if python3 "$(dirname "$0")/telegram_setup.py"; then
+        TELEGRAM_READY=1
+    else
+        TELEGRAM_READY=0
+    fi
+}
+
+print_next_steps() {
+    echo ""
+    echo "Next steps:"
+    if [ "$TELEGRAM_READY" -eq 1 ]; then
+        echo "  docker compose up -d --build"
+    else
+        echo "  1. Set BOT_TOKEN, GROUP_ID, ADMIN_IDS in .env (or run: python3 scripts/telegram_setup.py)"
+        echo "  2. docker compose up -d --build"
+    fi
+}
 
 if ! command -v wg >/dev/null 2>&1; then
     warn "wireguard-tools not found. Will generate keys via Docker."
@@ -33,14 +54,14 @@ fi
 # --- Load existing .env if present ---
 if [ -f .env ]; then
     warn ".env already exists. Skipping key generation (delete .env to regenerate)."
+    setup_telegram
+    print_next_steps
     exit 0
 fi
 
-cp .env.example .env
-
 # Read configurable SNI/domain values — user may edit .env.example before running setup
-XRAY_REALITY_SNI=$(grep -m1 '^XRAY_REALITY_SNI=' .env | cut -d= -f2-)
-MTPROXY_DOMAIN=$(grep -m1 '^MTPROXY_DOMAIN=' .env | cut -d= -f2-)
+XRAY_REALITY_SNI=$(grep -m1 '^XRAY_REALITY_SNI=' .env.example | cut -d= -f2-)
+MTPROXY_DOMAIN=$(grep -m1 '^MTPROXY_DOMAIN=' .env.example | cut -d= -f2-)
 
 # --- Generate WireGuard server keys ---
 info "Generating WireGuard server keys..."
@@ -179,13 +200,26 @@ POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
 
 # --- Detect server IP ---
 SERVER_IP=$(curl -s --connect-timeout 5 https://api.ipify.org 2>/dev/null || echo "")
-if [ -z "$SERVER_IP" ]; then
-    warn "Could not detect server IP. Set SERVER_IP manually in .env"
-    SERVER_IP="YOUR_SERVER_IP"
+if [[ ! "$SERVER_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    warn "Could not detect server IP."
+    SERVER_IP=""
+    while [ -t 0 ] && [ -z "$SERVER_IP" ]; do
+        read -r -p "Server public IP or domain (Enter to skip): " SERVER_IP || true
+        [ -z "$SERVER_IP" ] && break
+        if [[ ! "$SERVER_IP" =~ ^[A-Za-z0-9.-]+$ ]]; then
+            warn "That does not look like an IP address or domain."
+            SERVER_IP=""
+        fi
+    done
+    if [ -z "$SERVER_IP" ]; then
+        warn "Set SERVER_IP manually in .env"
+        SERVER_IP="YOUR_SERVER_IP"
+    fi
 fi
 
 # --- Write .env ---
-sed -i \
+# Created only now, so a run that failed earlier can simply be repeated
+sed \
     -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" \
     -e "s|^DATABASE_URL=.*|DATABASE_URL=postgresql://vpn:${POSTGRES_PASSWORD}@postgres:5432/vpn|" \
     -e "s|^SERVER_IP=.*|SERVER_IP=${SERVER_IP}|" \
@@ -194,14 +228,15 @@ sed -i \
     -e "s|^XRAY_REALITY_SHORT_ID=.*|XRAY_REALITY_SHORT_ID=${XRAY_SHORT_ID}|" \
     -e "s|^MTPROXY_DOMAIN=.*|MTPROXY_DOMAIN=${MTPROXY_DOMAIN}|" \
     -e "s|^MTPROXY_SECRET=.*|MTPROXY_SECRET=${MTPROXY_SECRET}|" \
-    .env
+    .env.example > .env
+
+info "Keys and configs generated."
+
+setup_telegram
 
 echo ""
 info "Setup complete!"
-echo ""
-echo "Next steps:"
-echo "  1. Edit .env — set BOT_TOKEN, GROUP_ID, ADMIN_IDS"
-echo "  2. docker compose up -d --build"
+print_next_steps
 echo ""
 echo "Server IP:        ${SERVER_IP}"
 echo "WireGuard pubkey: ${WG_PUBLIC_KEY}"

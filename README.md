@@ -12,7 +12,7 @@ Everything runs in Docker Compose. Users manage their own configs via a Telegram
 
 - Linux server with a public IP
 - Docker + Docker Compose
-- `openssl` (`apt install openssl`)
+- `openssl` and `python3` (`apt install openssl python3`)
 - AmneziaWG kernel module on the host:
   ```bash
   sudo add-apt-repository ppa:amnezia/ppa
@@ -25,15 +25,20 @@ Everything runs in Docker Compose. Users manage their own configs via a Telegram
 ```bash
 git clone <repo> && cd vpn
 
-# Generate keys and create configs
+# Generate keys, create configs and connect the Telegram bot
 bash scripts/setup.sh
-
-# Edit .env — set BOT_TOKEN, GROUP_ID, ADMIN_IDS
-nano .env
 
 # Start everything
 docker compose up -d --build
 ```
+
+`setup.sh` ends with a short Telegram wizard:
+
+1. Create a bot in [@BotFather](https://t.me/BotFather) (`/newbot`) and paste its token — the script checks it right away.
+2. Add the bot to your group and promote it to administrator — the script detects the group and writes `GROUP_ID`.
+3. Whoever added the bot becomes the bot admin (`ADMIN_IDS`); add more IDs to `.env` by hand, comma-separated.
+
+The wizard only asks for values missing from `.env`, so it is safe to re-run: `python3 scripts/telegram_setup.py` (stop the bot container first — only one process can read the bot's updates). You can also skip it and fill the three values in `.env` manually.
 
 ## Configuration
 
