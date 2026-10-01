@@ -63,6 +63,28 @@ fi
 XRAY_REALITY_SNI=$(grep -m1 '^XRAY_REALITY_SNI=' .env.example | cut -d= -f2-)
 MTPROXY_DOMAIN=$(grep -m1 '^MTPROXY_DOMAIN=' .env.example | cut -d= -f2-)
 
+# --- Ask for the Reality SNI ---
+# Reality borrows the TLS handshake of this site, so it must serve TLS 1.3 on port 443
+supports_tls13() {
+    timeout 10 openssl s_client -connect "$1:443" -servername "$1" -tls1_3 </dev/null >/dev/null 2>&1
+}
+
+while [ -t 0 ]; do
+    read -r -p "Xray Reality SNI [${XRAY_REALITY_SNI}]: " SNI_INPUT || true
+    [ -z "$SNI_INPUT" ] && break
+    if [[ ! "$SNI_INPUT" =~ ^[A-Za-z0-9.-]+$ ]]; then
+        warn "That does not look like a domain."
+        continue
+    fi
+    if ! supports_tls13 "$SNI_INPUT"; then
+        warn "${SNI_INPUT} did not answer with TLS 1.3 on port 443 — Reality will not work with it."
+        read -r -p "Use it anyway? [y/N] " SNI_FORCE || true
+        [[ "$SNI_FORCE" =~ ^[Yy] ]] || continue
+    fi
+    XRAY_REALITY_SNI="$SNI_INPUT"
+    break
+done
+
 # --- Generate WireGuard server keys ---
 info "Generating WireGuard server keys..."
 if [ "$USE_DOCKER_FOR_WG_KEYS" -eq 0 ]; then
@@ -226,6 +248,7 @@ sed \
     -e "s|^XRAY_REALITY_PRIVATE_KEY=.*|XRAY_REALITY_PRIVATE_KEY=${XRAY_PRIVATE_KEY}|" \
     -e "s|^XRAY_REALITY_PUBLIC_KEY=.*|XRAY_REALITY_PUBLIC_KEY=${XRAY_PUBLIC_KEY}|" \
     -e "s|^XRAY_REALITY_SHORT_ID=.*|XRAY_REALITY_SHORT_ID=${XRAY_SHORT_ID}|" \
+    -e "s|^XRAY_REALITY_SNI=.*|XRAY_REALITY_SNI=${XRAY_REALITY_SNI}|" \
     -e "s|^MTPROXY_DOMAIN=.*|MTPROXY_DOMAIN=${MTPROXY_DOMAIN}|" \
     -e "s|^MTPROXY_SECRET=.*|MTPROXY_SECRET=${MTPROXY_SECRET}|" \
     .env.example > .env
@@ -241,5 +264,6 @@ echo ""
 echo "Server IP:        ${SERVER_IP}"
 echo "WireGuard pubkey: ${WG_PUBLIC_KEY}"
 echo "Xray pubkey:      ${XRAY_PUBLIC_KEY}"
+echo "Xray SNI:         ${XRAY_REALITY_SNI}"
 echo "MTProxy domain:   ${MTPROXY_DOMAIN}"
 echo "MTProxy secret:   ${MTPROXY_SECRET}"
