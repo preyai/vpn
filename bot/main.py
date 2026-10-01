@@ -13,6 +13,7 @@ from handlers import start, wireguard, xray_handler, stats, admin, resend
 from services import expiry as expiry_svc
 from services import status as status_svc
 from services import traffic as traffic_svc
+from services import xray_service as xray_svc
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,6 +25,11 @@ logger = logging.getLogger(__name__)
 async def main() -> None:
     await db.init_db()
     logger.info("Database initialized")
+
+    try:
+        await xray_svc.sync_reality_sni()
+    except Exception:
+        logger.exception("Failed to sync Xray Reality SNI with .env")
 
     bot = Bot(
         token=cfg.BOT_TOKEN,

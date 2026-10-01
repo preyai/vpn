@@ -74,6 +74,22 @@ def _remove_client_from_config(data: dict, uuid: str) -> None:
             return
 
 
+def _apply_reality_sni(data: dict) -> bool:
+    """Points the Reality inbound at XRAY_REALITY_SNI. Returns True if the config changed."""
+    for inbound in data.get("inbounds", []):
+        if inbound.get("tag") == "vless-in":
+            reality = inbound["streamSettings"]["realitySettings"]
+            wanted = {
+                "dest": f"{cfg.XRAY_REALITY_SNI}:443",
+                "serverNames": [cfg.XRAY_REALITY_SNI],
+            }
+            if all(reality.get(k) == v for k, v in wanted.items()):
+                return False
+            reality.update(wanted)
+            return True
+    raise RuntimeError("vless-in inbound not found in Xray config")
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 async def create_vless_config(user_id: int, name: str) -> str:
@@ -116,12 +132,29 @@ async def remove_vless_config(config_id: int, user_id: int) -> bool:
     return True
 
 
+async def sync_reality_sni() -> None:
+    """Brings config.json in line with XRAY_REALITY_SNI from .env.
+
+    setup.sh bakes the SNI into config.json once; without this, editing .env later
+    changes only the share links and the server rejects them.
+    """
+    async with _lock:
+        data = await asyncio.to_thread(_read_xray_config)
+        if not _apply_reality_sni(data):
+            return
+        await asyncio.to_thread(_write_xray_config, data)
+        await asyncio.to_thread(_do_reload_xray)
+
+    logger.info("Xray Reality SNI updated to %s", cfg.XRAY_REALITY_SNI)
+
+
 async def rebuild_xray_config_from_db() -> None:
     """Rebuilds Xray config from DB. Admin utility."""
     active = await db.get_all_active_xray_configs()
 
     async with _lock:
         data = await asyncio.to_thread(_read_xray_config)
+        _apply_reality_sni(data)
         for inbound in data.get("inbounds", []):
             if inbound.get("tag") == "vless-in":
                 inbound["settings"]["clients"] = [

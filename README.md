@@ -54,6 +54,9 @@ All settings live in `.env` (copied from `.env.example` by `setup.sh`).
 | `CREATION_COOLDOWN_SECS` | Cooldown between config creations (default: `15`) |
 
 `XRAY_REALITY_*`, `MTPROXY_DOMAIN`, and `MTPROXY_SECRET` are generated automatically by `setup.sh`.
+
+`XRAY_REALITY_SNI` can be changed after setup: edit `.env` and run `docker compose up -d` — the bot rewrites `xray/config.json` on startup and restarts Xray. Links issued earlier carry the old SNI and must be re-sent from `/my_configs`.
+
 For `nineseconds/mtg:2`, the secret must be an `ee...` hex secret with an embedded fronting hostname, matching the upstream `mtg generate-secret --hex <domain>` format.
 
 ## Bot Commands
