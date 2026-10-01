@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   docker-socket-proxy:
     image: tecnativa/docker-socket-proxy:latest
@@ -12,6 +18,9 @@ services:
       EXEC: 1         # allow creating and running exec sessions
       KILL: 1         # allow sending signals (SIGHUP for xray reload)
       POST: 1         # allow POST requests required by exec and kill
+    networks:
+      - backend
+    logging: *default-logging
     restart: unless-stopped
 
   postgres:
@@ -23,6 +32,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    logging: *default-logging
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vpn}"]
@@ -44,6 +56,9 @@ services:
       - /lib/modules:/lib/modules:ro
     ports:
       - "${AWG_PORT:-51820}:51820/udp"
+    networks:
+      - frontend
+    logging: *default-logging
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "ip link show wg0 | grep -q UP"]
@@ -59,6 +74,9 @@ services:
       - ./xray:/usr/local/etc/xray
     ports:
       - "${XRAY_PORT:-443}:443"
+    networks:
+      - frontend
+    logging: *default-logging
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "/usr/local/bin/xray", "version"]
@@ -73,6 +91,9 @@ services:
     ports:
       - "${MTPROXY_PORT:-8443}:3128"
     command: simple-run 0.0.0.0:3128 ${MTPROXY_SECRET} --prefer-ip=prefer-ipv4
+    networks:
+      - frontend
+    logging: *default-logging
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "/mtg", "--version"]
@@ -102,7 +123,19 @@ services:
         condition: service_healthy
       mtproxy:
         condition: service_healthy
+    networks:
+      - backend
+      - frontend
+    logging: *default-logging
     restart: unless-stopped
+
+networks:
+  # Docker API and database. VPN clients' traffic leaves through the frontend
+  # containers, so nothing that carries it may be attached here — only the bot is.
+  backend:
+    internal: true
+  # Containers that face the internet and forward client traffic
+  frontend:
 
 volumes:
   postgres_data:

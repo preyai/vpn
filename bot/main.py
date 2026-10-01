@@ -59,9 +59,9 @@ async def main() -> None:
     logger.info("Database initialized")
 
     try:
-        await xray_svc.sync_reality_sni()
+        await xray_svc.sync_xray_config()
     except Exception:
-        logger.exception("Failed to sync Xray Reality SNI with .env")
+        logger.exception("Failed to sync Xray config")
 
     bot = Bot(
         token=cfg.BOT_TOKEN,

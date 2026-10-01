@@ -107,6 +107,7 @@ Admin commands (ADMIN_IDS only):
 ```
 
 - The bot talks to containers via `docker-socket-proxy` — it never touches the raw Docker socket directly. Only `CONTAINERS`, `EXEC`, `KILL`, and `POST` APIs are permitted.
+- Two Docker networks keep VPN clients away from the control plane: `backend` (socket proxy, Postgres) is internal and only the bot is attached to it; `frontend` holds the containers that forward client traffic. Xray additionally refuses to proxy to private addresses, and its access log is off, so users' destinations are not recorded. Container logs are capped at 3 × 10 MB each.
 - WireGuard peer configs are written to `amneziawg/config/wg0.conf` (shared volume) and applied with `awg syncconf` — no tunnel restart.
 - Xray is reloaded with `SIGHUP` when clients are added or removed — reload takes ~50 ms vs several seconds for a restart.
 - Peer creation uses an `asyncio.Lock` to prevent IP allocation races under concurrent requests.

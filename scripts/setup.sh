@@ -155,10 +155,12 @@ XRAY_PUBLIC_KEY=$(echo "$XRAY_KEYS"  | sed -n '2p')
 XRAY_SHORT_ID=$(openssl rand -hex 4)
 
 # --- Generate Xray config ---
+# The bot adds the routing rule that blocks private destinations on its first start
+# (bot/services/xray_service.py, _apply_hardening)
 mkdir -p xray
 cat > xray/config.json << EOF
 {
-  "log": { "loglevel": "warning" },
+  "log": { "loglevel": "warning", "access": "none" },
   "api": { "tag": "api", "services": ["StatsService"] },
   "stats": {},
   "policy": {
