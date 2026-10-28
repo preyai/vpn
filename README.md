@@ -23,7 +23,7 @@ Everything runs in Docker Compose. Users manage their own configs via a Telegram
 ## Quick Start
 
 ```bash
-git clone <repo> && cd vpn
+git clone https://github.com/preyai/vpn.git && cd vpn
 
 # Generate keys, create configs and connect the Telegram bot
 bash scripts/setup.sh
