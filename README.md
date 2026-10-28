@@ -62,6 +62,8 @@ All settings live in `.env` (copied from `.env.example` by `setup.sh`).
 
 `XRAY_REALITY_SNI` can be changed after setup: edit `.env` and run `docker compose up -d` — the bot rewrites `xray/config.json` on startup and restarts Xray. Links issued earlier carry the old SNI and must be re-sent from `/my_configs`.
 
+Xray is pinned to 26.7.28 and the bot sets Reality's `minClientVer` to `1.0.0`. Clients built on sing-box (Karing, Hiddify) report an old Xray version, and newer Xray turns them away with "reality verification failed": 26.7.28 by its default minimum client version, 26.9.8+ also by requiring an X25519MLKEM768 key share that sing-box does not send. Do not bump the Xray image until sing-box supports it.
+
 ### Telegram WEB proxy
 
 Telegram Desktop 7.1 added a WEB proxy type: the app carries ordinary MTProxy traffic through a built-in browser over real HTTPS/WebSocket to your domain, so to an observer it looks like someone visiting a website. Android support is in beta, iOS does not have it yet.

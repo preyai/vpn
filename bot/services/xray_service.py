@@ -76,13 +76,16 @@ def _remove_client_from_config(data: dict, uuid: str) -> None:
 
 
 def _apply_reality_sni(data: dict) -> bool:
-    """Points the Reality inbound at XRAY_REALITY_SNI. Returns True if the config changed."""
+    """Points the Reality inbound at XRAY_REALITY_SNI and lets sing-box clients in. Returns True if the config changed."""
     for inbound in data.get("inbounds", []):
         if inbound.get("tag") == "vless-in":
             reality = inbound["streamSettings"]["realitySettings"]
             wanted = {
                 "dest": f"{cfg.XRAY_REALITY_SNI}:443",
                 "serverNames": [cfg.XRAY_REALITY_SNI],
+                # Xray 26.x refuses clients reporting a version below v26.3.27 by default;
+                # sing-box (Karing, Hiddify) reports 1.8.x and gets "reality verification failed"
+                "minClientVer": "1.0.0",
             }
             if all(reality.get(k) == v for k, v in wanted.items()):
                 return False
