@@ -13,7 +13,7 @@ from aiogram.types import (
 
 import config as cfg
 import database as db
-from keyboards import main_keyboard, cancel_keyboard
+from keyboards import BTN_CANCEL, back_to_list_keyboard, main_keyboard, cancel_keyboard, wg_apps_keyboard
 from services import wireguard as wg_svc
 from services import rate_limit
 from states import WGCreate
@@ -23,42 +23,20 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-def _configs_keyboard(wg_cfgs: list[dict], xray_cfgs: list[dict]) -> InlineKeyboardMarkup:
-    rows = []
-    for c in wg_cfgs:
-        rows.append([
-            InlineKeyboardButton(
-                text=f"🔒 {c['name']} ({c['ip_address']})",
-                callback_data=f"resend_wg:{c['id']}",
-            ),
-            InlineKeyboardButton(text="🗑", callback_data=f"del_wg:{c['id']}"),
-        ])
-    for c in xray_cfgs:
-        rows.append([
-            InlineKeyboardButton(
-                text=f"⚡ {c['name']}",
-                callback_data=f"resend_xray:{c['id']}",
-            ),
-            InlineKeyboardButton(text="🗑", callback_data=f"del_xray:{c['id']}"),
-        ])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
 def _confirm_keyboard(action: str, config_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"{action}:{config_id}"),
-        InlineKeyboardButton(text="❌ Отмена",      callback_data="cancel_del"),
+        InlineKeyboardButton(text="❌ Отмена",      callback_data=f"cfg:wg:{config_id}"),
     ]])
+
 
 
 # ── /new_wg — start FSM ───────────────────────────────────────────────────────
 
-@router.message(Command("new_wg"))
-@router.message(F.text == "🔒 Новый WG")
-async def cmd_new_wg(message: Message, state: FSMContext) -> None:
-    db_user = await db.get_user(message.from_user.id)
+async def start_wg_creation(message: Message, user_id: int, state: FSMContext) -> None:
+    db_user = await db.get_user(user_id)
 
-    remaining = rate_limit.check_cooldown(message.from_user.id)
+    remaining = rate_limit.check_cooldown(user_id)
     if remaining > 0:
         await message.answer(f"⏳ Подожди {remaining:.0f} сек. перед созданием нового конфига.")
         return
@@ -75,11 +53,22 @@ async def cmd_new_wg(message: Message, state: FSMContext) -> None:
     )
 
 
+@router.message(Command("new_wg"))
+async def cmd_new_wg(message: Message, state: FSMContext) -> None:
+    await start_wg_creation(message, message.from_user.id, state)
+
+
+@router.callback_query(F.data == "new:wg")
+async def cb_new_wg(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await start_wg_creation(callback.message, callback.from_user.id, state)
+
+
 @router.message(WGCreate.name)
 async def cmd_new_wg_name(message: Message, state: FSMContext) -> None:
-    if message.text == "❌ Отмена":
+    if message.text == BTN_CANCEL:
         await state.clear()
-        await message.answer("✖️ Отменено.", reply_markup=main_keyboard())
+        await message.answer("✖️ Отменено.", reply_markup=main_keyboard(message.from_user.id))
         return
 
     name = message.text.strip()[:50] or "WireGuard"
@@ -91,11 +80,11 @@ async def cmd_new_wg_name(message: Message, state: FSMContext) -> None:
     if remaining > 0:
         await message.answer(
             f"⏳ Подожди {remaining:.0f} сек. перед созданием нового конфига.",
-            reply_markup=main_keyboard(),
+            reply_markup=main_keyboard(message.from_user.id),
         )
         return
 
-    await message.answer("⏳ Создаю конфиг…", reply_markup=main_keyboard())
+    await message.answer("⏳ Создаю конфиг…", reply_markup=main_keyboard(message.from_user.id))
 
     try:
         conf_text = await wg_svc.create_peer(db_user["id"], name)
@@ -113,6 +102,7 @@ async def cmd_new_wg_name(message: Message, state: FSMContext) -> None:
             f"Используй приложение *AmneziaVPN* для подключения\\."
         ),
         parse_mode="MarkdownV2",
+        reply_markup=wg_apps_keyboard(),
     )
 
     qr = qrcode.make(conf_text)
@@ -123,36 +113,6 @@ async def cmd_new_wg_name(message: Message, state: FSMContext) -> None:
         photo=BufferedInputFile(buf.read(), filename="qr.png"),
         caption="📱 QR\\-код для AmneziaVPN",
         parse_mode="MarkdownV2",
-    )
-
-
-# ── /my_configs — unified view ────────────────────────────────────────────────
-
-@router.message(Command("my_configs"))
-@router.message(F.text == "📁 Мои конфиги")
-async def cmd_my_configs(message: Message) -> None:
-    db_user = await db.get_user(message.from_user.id)
-    wg_cfgs   = await db.get_wg_configs(db_user["id"])
-    xray_cfgs = await db.get_xray_configs(db_user["id"])
-
-    if not wg_cfgs and not xray_cfgs:
-        await message.answer(
-            "У тебя нет активных конфигов\\.\n\nСоздай через кнопки ниже\\.",
-            parse_mode="MarkdownV2",
-        )
-        return
-
-    lines = ["📁 *Твои конфиги*\n"]
-    if wg_cfgs:
-        lines.append(f"🔒 WireGuard: {len(wg_cfgs)}")
-    if xray_cfgs:
-        lines.append(f"⚡ VLESS/Reality: {len(xray_cfgs)}")
-    lines.append("\n_Нажми на конфиг — получить повторно_\n_🗑 — удалить_")
-
-    await message.answer(
-        "\n".join(lines),
-        parse_mode="MarkdownV2",
-        reply_markup=_configs_keyboard(wg_cfgs, xray_cfgs),
     )
 
 
@@ -204,13 +164,16 @@ async def cb_del_wg_execute(callback: CallbackQuery) -> None:
         return
 
     if ok:
-        await callback.message.edit_text("✅ WireGuard конфиг удалён\\.", parse_mode="MarkdownV2")
+        await callback.message.edit_text(
+            "✅ WireGuard конфиг удалён\\.", parse_mode="MarkdownV2", reply_markup=back_to_list_keyboard()
+        )
     else:
         await callback.message.edit_text("❌ Конфиг не найден\\.", parse_mode="MarkdownV2")
 
 
 # ── Shared cancel ─────────────────────────────────────────────────────────────
 
+# Confirmations now cancel back to the config card; kept for messages sent before that
 @router.callback_query(F.data == "cancel_del")
 async def cb_cancel_del(callback: CallbackQuery) -> None:
     await callback.message.edit_text("✖️ Отменено\\.", parse_mode="MarkdownV2")

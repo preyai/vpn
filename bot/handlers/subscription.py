@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 import database as db
+from keyboards import BTN_SUB
 from services.subscription import subscription_url
 from utils import md
 
@@ -28,6 +29,7 @@ def _sub_text(token: str) -> str:
 
 
 @router.message(Command("sub"))
+@router.message(F.text == BTN_SUB)
 async def cmd_sub(message: Message) -> None:
     db_user = await db.get_user(message.from_user.id)
     token = await db.get_sub_token(db_user["id"])

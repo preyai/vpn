@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 
 import database as db
+from keyboards import BTN_TRAFFIC
 from services.traffic import get_wg_config_usage, get_xray_config_usage, format_bytes, format_handshake
 from utils import md
 
@@ -13,7 +14,7 @@ router = Router()
 
 
 @router.message(Command("traffic"))
-@router.message(F.text == "📊 Трафик")
+@router.message(F.text == BTN_TRAFFIC)
 async def cmd_traffic(message: Message) -> None:
     db_user = await db.get_user(message.from_user.id)
     wg_cfgs   = await db.get_wg_configs(db_user["id"])

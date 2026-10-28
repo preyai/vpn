@@ -212,6 +212,15 @@ async def delete_wg_config(config_id: int, user_id: int) -> dict | None:
         return dict(row) if row else None
 
 
+async def rename_wg_config(config_id: int, user_id: int, name: str) -> bool:
+    async with _pool_().acquire() as conn:
+        result = await conn.execute(
+            "UPDATE wg_configs SET name = $3 WHERE id = $1 AND user_id = $2 AND is_active = TRUE",
+            config_id, user_id, name,
+        )
+        return result == "UPDATE 1"
+
+
 async def get_all_wg_ips() -> list[str]:
     async with _pool_().acquire() as conn:
         rows = await conn.fetch("SELECT ip_address FROM wg_configs")
@@ -305,6 +314,15 @@ async def delete_xray_config(config_id: int, user_id: int) -> dict | None:
                 "UPDATE xray_configs SET is_active = FALSE WHERE id = $1", config_id
             )
         return dict(row) if row else None
+
+
+async def rename_xray_config(config_id: int, user_id: int, name: str) -> bool:
+    async with _pool_().acquire() as conn:
+        result = await conn.execute(
+            "UPDATE xray_configs SET name = $3 WHERE id = $1 AND user_id = $2 AND is_active = TRUE",
+            config_id, user_id, name,
+        )
+        return result == "UPDATE 1"
 
 
 async def get_all_active_xray_configs() -> list[dict]:

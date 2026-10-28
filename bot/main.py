@@ -11,7 +11,7 @@ from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, BotCommand
 import config as cfg
 import database as db
 from middlewares.auth import AuthMiddleware
-from handlers import start, wireguard, xray_handler, stats, admin, resend, subscription
+from handlers import start, menu, wireguard, xray_handler, stats, admin, resend, subscription, fallback
 from services import expiry as expiry_svc
 from services import status as status_svc
 from services import subscription as subscription_svc
@@ -28,7 +28,7 @@ USER_COMMANDS = [
     BotCommand(command="start", description="Главное меню"),
     BotCommand(command="new_wg", description="Создать WireGuard конфиг"),
     BotCommand(command="new_xray", description="Создать VLESS конфиг"),
-    BotCommand(command="my_configs", description="Мои конфиги"),
+    BotCommand(command="my_configs", description="Мои устройства"),
     BotCommand(command="sub", description="Подписка на VLESS-конфиги"),
     BotCommand(command="traffic", description="Статистика трафика"),
     BotCommand(command="tg_proxy", description="Прокси для Telegram"),
@@ -76,12 +76,15 @@ async def main() -> None:
     dp.callback_query.middleware(AuthMiddleware())
 
     dp.include_router(start.router)
+    dp.include_router(menu.router)
     dp.include_router(wireguard.router)
     dp.include_router(xray_handler.router)
     dp.include_router(resend.router)
     dp.include_router(subscription.router)
     dp.include_router(stats.router)
     dp.include_router(admin.router)
+    # Must stay last: answers whatever no other router handled
+    dp.include_router(fallback.router)
 
     try:
         await set_bot_commands(bot)

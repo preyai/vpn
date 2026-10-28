@@ -11,6 +11,7 @@ from services import status as status_svc
 from services import traffic as traffic_svc
 from services import wireguard as wg_svc
 from services import xray_service as xray_svc
+from keyboards import BTN_ADMIN
 from utils import md
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,10 @@ def _format_expiry(expires_at) -> str:
 async def cmd_admin_users(message: Message) -> None:
     if not _is_admin(message.from_user.id):
         return
+    await _send_users(message)
 
+
+async def _send_users(message: Message) -> None:
     users = await db.get_all_users()
     if not users:
         await message.answer("Нет пользователей.")
@@ -69,7 +73,10 @@ async def cmd_admin_users(message: Message) -> None:
 async def cmd_admin_traffic(message: Message) -> None:
     if not _is_admin(message.from_user.id):
         return
+    await _send_traffic(message)
 
+
+async def _send_traffic(message: Message) -> None:
     summary = await db.get_users_traffic_summary()
     if not summary:
         await message.answer("Нет пользователей.")
@@ -194,6 +201,10 @@ async def cb_admin_unblock(callback: CallbackQuery) -> None:
 async def cmd_admin_rebuild_xray(message: Message) -> None:
     if not _is_admin(message.from_user.id):
         return
+    await _rebuild_xray(message)
+
+
+async def _rebuild_xray(message: Message) -> None:
     await message.answer("⏳ Пересобираю конфиг Xray из БД…")
     try:
         await xray_svc.rebuild_xray_config_from_db()
@@ -207,7 +218,10 @@ async def cmd_admin_rebuild_xray(message: Message) -> None:
 async def cmd_status(message: Message) -> None:
     if not _is_admin(message.from_user.id):
         return
+    await _send_status(message)
 
+
+async def _send_status(message: Message) -> None:
     await message.answer("⏳ Проверяю сервисы…")
     text = await status_svc.render_status_text()
     await message.answer(text, parse_mode="MarkdownV2")
@@ -261,7 +275,10 @@ async def cmd_admin_cleanup_wg(message: Message) -> None:
         )
         return
 
-    threshold_days = int(parts[1])
+    await _find_stale_wg(message, message.from_user.id, int(parts[1]))
+
+
+async def _find_stale_wg(message: Message, admin_id: int, threshold_days: int) -> None:
     cutoff = datetime.now() - timedelta(days=threshold_days)
 
     configs = await db.get_all_active_wg_configs()
@@ -283,7 +300,7 @@ async def cmd_admin_cleanup_wg(message: Message) -> None:
         await message.answer(f"✅ Нет пиров, неактивных более {threshold_days} дн\\.", parse_mode="MarkdownV2")
         return
 
-    _cleanup_candidates[message.from_user.id] = [(c["id"], c["user_id"]) for c, _ in stale]
+    _cleanup_candidates[admin_id] = [(c["id"], c["user_id"]) for c, _ in stale]
 
     lines = [f"🗑 *Неактивны более {threshold_days} дн\\.* \\({len(stale)}\\):\n"]
     for c, ts in stale:
@@ -328,3 +345,47 @@ async def cb_cancel_cleanup_wg(callback: CallbackQuery) -> None:
     _cleanup_candidates.pop(callback.from_user.id, None)
     await callback.message.edit_text("✖️ Отменено\\.", parse_mode="MarkdownV2")
     await callback.answer()
+
+
+# ── Admin panel (🛠 Админка button) ───────────────────────────────────────────
+
+_PANEL_KEYBOARD = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="👥 Пользователи", callback_data="adm:users"),
+     InlineKeyboardButton(text="📊 Трафик", callback_data="adm:traffic")],
+    [InlineKeyboardButton(text="🩺 Статус", callback_data="adm:status"),
+     InlineKeyboardButton(text="🗑 Неактивные WG 30+ дн.", callback_data="adm:cleanup30")],
+    [InlineKeyboardButton(text="🔧 Пересобрать Xray", callback_data="adm:rebuild")],
+])
+
+
+@router.message(F.text == BTN_ADMIN)
+async def msg_admin_panel(message: Message) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await message.answer(
+        "🛠 *Админка*\n\n"
+        "Сроки действия: `/admin_set_expiry <wg|xray> <id> <дней>` "
+        "\\(id есть в карточке пользователя\\)\\.",
+        parse_mode="MarkdownV2",
+        reply_markup=_PANEL_KEYBOARD,
+    )
+
+
+@router.callback_query(F.data.startswith("adm:"))
+async def cb_admin_panel(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("⛔ Нет доступа.", show_alert=True)
+        return
+
+    await callback.answer()
+    action = callback.data.removeprefix("adm:")
+    if action == "users":
+        await _send_users(callback.message)
+    elif action == "traffic":
+        await _send_traffic(callback.message)
+    elif action == "status":
+        await _send_status(callback.message)
+    elif action == "cleanup30":
+        await _find_stale_wg(callback.message, callback.from_user.id, 30)
+    elif action == "rebuild":
+        await _rebuild_xray(callback.message)

@@ -2,10 +2,10 @@ from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
-from aiogram.types import FSInputFile, Message
+from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 import config as cfg
-from keyboards import main_keyboard
+from keyboards import BTN_DONATE, BTN_TG_PROXY, main_keyboard
 from middlewares.auth import is_group_member
 from utils import md
 
@@ -16,9 +16,10 @@ _DONATE_QR_PATH = Path(__file__).resolve().parent.parent / "assets" / "donate_qr
 HELP_TEXT = r"""
 *Доступные команды:*
 
+/my\_configs — мои устройства
+
 *WireGuard \(AmneziaWG\):*
 /new\_wg — создать конфиг
-/my\_configs — список конфигов
 
 *VLESS / Reality:*
 /new\_xray — создать конфиг
@@ -55,23 +56,23 @@ async def cmd_start(message: Message) -> None:
         "Используй кнопки меню или команды ниже\\.\n"
         f"{HELP_TEXT}",
         parse_mode="MarkdownV2",
-        reply_markup=main_keyboard(),
+        reply_markup=main_keyboard(user.id),
     )
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
-    await message.answer(HELP_TEXT, parse_mode="MarkdownV2", reply_markup=main_keyboard())
+    await message.answer(HELP_TEXT, parse_mode="MarkdownV2", reply_markup=main_keyboard(message.from_user.id))
 
 
 @router.message(Command("tg_proxy"))
-@router.message(F.text == "📡 Прокси для Telegram")
+@router.message(F.text == BTN_TG_PROXY)
 async def cmd_tg_proxy(message: Message) -> None:
     params = f"server={cfg.TG_WEBPROXY_DOMAIN}&secret={cfg.TG_WEBPROXY_SECRET}"
     await message.answer(
         "📡 *WEB\\-прокси для Telegram*\n\n"
-        f"[Подключить прокси](https://t.me/webproxy?{params})\n\n"
-        "Если ссылка не открылась, скопируй и отправь себе в Избранное, затем нажми:\n"
+        "Нажми «Подключить» под сообщением\\.\n\n"
+        "Если не сработало, скопируй и отправь себе в Избранное, затем нажми:\n"
         f"`tg://webproxy?{md(params)}`\n\n"
         "Или добавь вручную в настройках прокси Telegram, тип — WEB:\n"
         f"Сервер: `{md(cfg.TG_WEBPROXY_DOMAIN)}`\n"
@@ -79,11 +80,14 @@ async def cmd_tg_proxy(message: Message) -> None:
         "Нужен Telegram Desktop 7\\.1 или новее\\. На Android WEB\\-прокси пока в бете, "
         "на iOS его ещё нет — там используй VLESS или WireGuard\\.",
         parse_mode="MarkdownV2",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📡 Подключить", url=f"https://t.me/webproxy?{params}"),
+        ]]),
     )
 
 
 @router.message(Command("donate"))
-@router.message(F.text == "💛 Поддержать")
+@router.message(F.text == BTN_DONATE)
 async def cmd_donate(message: Message) -> None:
     if not _DONATE_QR_PATH.exists():
         await message.answer("Реквизиты временно недоступны.")

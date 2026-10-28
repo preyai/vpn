@@ -13,7 +13,7 @@ from aiogram.types import (
 
 import config as cfg
 import database as db
-from keyboards import main_keyboard, cancel_keyboard
+from keyboards import BTN_CANCEL, back_to_list_keyboard, main_keyboard, cancel_keyboard, vless_apps_keyboard
 from services import xray_service as xray_svc
 from services import rate_limit
 from states import XrayCreate
@@ -26,18 +26,16 @@ router = Router()
 def _confirm_keyboard(config_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_del_xray:{config_id}"),
-        InlineKeyboardButton(text="❌ Отмена",      callback_data="cancel_del"),
+        InlineKeyboardButton(text="❌ Отмена",      callback_data=f"cfg:xray:{config_id}"),
     ]])
 
 
 # ── /new_xray — start FSM ─────────────────────────────────────────────────────
 
-@router.message(Command("new_xray"))
-@router.message(F.text == "⚡ Новый VLESS")
-async def cmd_new_xray(message: Message, state: FSMContext) -> None:
-    db_user = await db.get_user(message.from_user.id)
+async def start_xray_creation(message: Message, user_id: int, state: FSMContext) -> None:
+    db_user = await db.get_user(user_id)
 
-    remaining = rate_limit.check_cooldown(message.from_user.id)
+    remaining = rate_limit.check_cooldown(user_id)
     if remaining > 0:
         await message.answer(f"⏳ Подожди {remaining:.0f} сек. перед созданием нового конфига.")
         return
@@ -54,11 +52,22 @@ async def cmd_new_xray(message: Message, state: FSMContext) -> None:
     )
 
 
+@router.message(Command("new_xray"))
+async def cmd_new_xray(message: Message, state: FSMContext) -> None:
+    await start_xray_creation(message, message.from_user.id, state)
+
+
+@router.callback_query(F.data == "new:xray")
+async def cb_new_xray(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await start_xray_creation(callback.message, callback.from_user.id, state)
+
+
 @router.message(XrayCreate.name)
 async def cmd_new_xray_name(message: Message, state: FSMContext) -> None:
-    if message.text == "❌ Отмена":
+    if message.text == BTN_CANCEL:
         await state.clear()
-        await message.answer("✖️ Отменено.", reply_markup=main_keyboard())
+        await message.answer("✖️ Отменено.", reply_markup=main_keyboard(message.from_user.id))
         return
 
     name = message.text.strip()[:50] or "VLESS"
@@ -70,11 +79,11 @@ async def cmd_new_xray_name(message: Message, state: FSMContext) -> None:
     if remaining > 0:
         await message.answer(
             f"⏳ Подожди {remaining:.0f} сек. перед созданием нового конфига.",
-            reply_markup=main_keyboard(),
+            reply_markup=main_keyboard(message.from_user.id),
         )
         return
 
-    await message.answer("⏳ Создаю конфиг, применяю изменения в Xray…", reply_markup=main_keyboard())
+    await message.answer("⏳ Создаю конфиг, применяю изменения в Xray…", reply_markup=main_keyboard(message.from_user.id))
 
     try:
         link = await xray_svc.create_vless_config(db_user["id"], name)
@@ -87,9 +96,11 @@ async def cmd_new_xray_name(message: Message, state: FSMContext) -> None:
 
     await message.answer(
         f"✅ *{md(name)}* — VLESS/Reality конфиг\n\n"
-        f"Скопируй ссылку в клиент \\(v2rayNG, Hiddify, Streisand\\):\n\n"
-        f"`{md(link)}`",
+        f"Скопируй ссылку в клиент \\(Karing, Hiddify, v2rayNG, Streisand\\):\n\n"
+        f"`{md(link)}`\n\n"
+        f"Удобнее — добавить подписку \\(🔗 Подписка\\): новые конфиги появятся в приложении сами\\.",
         parse_mode="MarkdownV2",
+        reply_markup=vless_apps_keyboard(),
     )
 
     qr = qrcode.make(link)
@@ -150,6 +161,8 @@ async def cb_del_xray_execute(callback: CallbackQuery) -> None:
         return
 
     if ok:
-        await callback.message.edit_text("✅ VLESS конфиг удалён\\.", parse_mode="MarkdownV2")
+        await callback.message.edit_text(
+            "✅ VLESS конфиг удалён\\.", parse_mode="MarkdownV2", reply_markup=back_to_list_keyboard()
+        )
     else:
         await callback.message.edit_text("❌ Конфиг не найден\\.", parse_mode="MarkdownV2")

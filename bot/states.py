@@ -7,3 +7,7 @@ class WGCreate(StatesGroup):
 
 class XrayCreate(StatesGroup):
     name = State()
+
+
+class RenameConfig(StatesGroup):
+    name = State()

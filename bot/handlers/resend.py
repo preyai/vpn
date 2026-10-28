@@ -19,6 +19,16 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+async def _send_qr(message: Message, payload: str, name: str) -> None:
+    buf = io.BytesIO()
+    qrcode.make(payload).save(buf, format="PNG")
+    await message.answer_photo(
+        photo=BufferedInputFile(buf.getvalue(), filename="qr.png"),
+        caption=f"📱 QR для *{md(name)}*",
+        parse_mode="MarkdownV2",
+    )
+
+
 @router.message(Command("resend"))
 async def cmd_resend(message: Message) -> None:
     db_user = await db.get_user(message.from_user.id)
@@ -75,15 +85,7 @@ async def cb_resend_wg(callback: CallbackQuery) -> None:
         parse_mode="MarkdownV2",
     )
 
-    qr = qrcode.make(conf_text)
-    buf = io.BytesIO()
-    qr.save(buf, format="PNG")
-    buf.seek(0)
-    await callback.message.answer_photo(
-        photo=BufferedInputFile(buf.read(), filename="qr.png"),
-        caption=f"📱 QR для *{md(record['name'])}*",
-        parse_mode="MarkdownV2",
-    )
+    await _send_qr(callback.message, conf_text, record["name"])
 
 
 @router.callback_query(F.data.startswith("resend_xray:"))
@@ -110,12 +112,46 @@ async def cb_resend_xray(callback: CallbackQuery) -> None:
         parse_mode="MarkdownV2",
     )
 
-    qr = qrcode.make(link)
-    buf = io.BytesIO()
-    qr.save(buf, format="PNG")
-    buf.seek(0)
-    await callback.message.answer_photo(
-        photo=BufferedInputFile(buf.read(), filename="qr.png"),
-        caption=f"📱 QR для *{md(record['name'])}*",
-        parse_mode="MarkdownV2",
-    )
+    await _send_qr(callback.message, link, record["name"])
+
+
+# ── QR only (from the config card) ────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("qr_wg:"))
+async def cb_qr_wg(callback: CallbackQuery) -> None:
+    parts = callback.data.split(":")
+    if len(parts) != 2 or not parts[1].isdigit():
+        await callback.answer("Неверный запрос.", show_alert=True)
+        return
+
+    db_user = await db.get_user(callback.from_user.id)
+    record = await db.get_wg_config_by_id(int(parts[1]), db_user["id"])
+    if not record:
+        await callback.answer("Конфиг не найден.", show_alert=True)
+        return
+
+    await callback.answer()
+    try:
+        conf_text = await wg_svc.get_peer_conf_text(record)
+    except Exception:
+        logger.exception("get_peer_conf_text failed config_id=%s", record["id"])
+        await callback.message.answer("❌ Не удалось восстановить конфиг\\.", parse_mode="MarkdownV2")
+        return
+    await _send_qr(callback.message, conf_text, record["name"])
+
+
+@router.callback_query(F.data.startswith("qr_xray:"))
+async def cb_qr_xray(callback: CallbackQuery) -> None:
+    parts = callback.data.split(":")
+    if len(parts) != 2 or not parts[1].isdigit():
+        await callback.answer("Неверный запрос.", show_alert=True)
+        return
+
+    db_user = await db.get_user(callback.from_user.id)
+    record = await db.get_xray_config_by_id(int(parts[1]), db_user["id"])
+    if not record:
+        await callback.answer("Конфиг не найден.", show_alert=True)
+        return
+
+    await callback.answer()
+    await _send_qr(callback.message, get_vless_link(record), record["name"])

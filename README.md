@@ -92,13 +92,15 @@ Subscriptions use their own domain: on the WEB proxy domain every path must look
 
 ## Bot Commands
 
+Most things are reachable from the menu keyboard: **➕ Connect a device** asks WireGuard or VLESS with a short explanation of each; **📁 My devices** lists configs, and each opens a card with traffic, expiry, resend, QR only, rename and delete; admins also get **🛠 Admin** with buttons for users, traffic, status, stale WG cleanup and an Xray rebuild. Any message the bot does not understand gets the current menu back, which also replaces buttons left over from older versions.
+
 | Command | Description |
 |---|---|
 | `/start` | Show welcome message and main menu |
 | `/new_wg` | Create a WireGuard config (dialog) |
 | `/new_xray` | Create a VLESS/Reality config (dialog) |
 | `/sub` | Personal subscription link with all VLESS configs; can be reset |
-| `/my_configs` | List all configs with resend and delete buttons |
+| `/my_configs` | Device list; each config opens a card with resend, QR, rename and delete |
 | `/traffic` | Traffic stats for all active configs |
 | `/tg_proxy` | Telegram WEB proxy link |
 
