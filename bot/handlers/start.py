@@ -24,7 +24,7 @@ HELP_TEXT = r"""
 /new\_xray — создать конфиг
 
 *Прокси для Telegram:*
-/tg\_proxy — HTTP\-прокси \(Telegram Desktop\)
+/tg\_proxy — WEB\-прокси \(Telegram Desktop\)
 
 *Статистика:*
 /traffic — трафик по всем конфигам
@@ -66,16 +66,17 @@ async def cmd_help(message: Message) -> None:
 @router.message(Command("tg_proxy"))
 @router.message(F.text == "📡 Прокси для Telegram")
 async def cmd_tg_proxy(message: Message) -> None:
-    # Telegram has no share link for HTTP proxies, so the settings are entered by hand
+    params = f"server={cfg.TG_WEBPROXY_DOMAIN}&secret={cfg.TG_WEBPROXY_SECRET}"
     await message.answer(
-        "📡 *HTTP\\-прокси для Telegram*\n\n"
-        f"Сервер: `{md(cfg.SERVER_IP)}`\n"
-        f"Порт: `{cfg.TG_PROXY_PORT}`\n"
-        f"Логин: `{md(cfg.TG_PROXY_USER)}`\n"
-        f"Пароль: `{md(cfg.TG_PROXY_PASSWORD)}`\n\n"
-        "*Telegram Desktop:* Настройки → Продвинутые настройки → Тип соединения → "
-        "Использовать собственный прокси → HTTP\\.\n\n"
-        "В мобильных приложениях Telegram HTTP\\-прокси нет — там используй VLESS или WireGuard\\.",
+        "📡 *WEB\\-прокси для Telegram*\n\n"
+        f"[Подключить прокси](https://t.me/webproxy?{params})\n\n"
+        "Если ссылка не открылась, скопируй и отправь себе в Избранное, затем нажми:\n"
+        f"`tg://webproxy?{md(params)}`\n\n"
+        "Или добавь вручную в настройках прокси Telegram, тип — WEB:\n"
+        f"Сервер: `{md(cfg.TG_WEBPROXY_DOMAIN)}`\n"
+        f"Секрет: `{md(cfg.TG_WEBPROXY_SECRET)}`\n\n"
+        "Нужен Telegram Desktop 7\\.1 или новее\\. На Android WEB\\-прокси пока в бете, "
+        "на iOS его ещё нет — там используй VLESS или WireGuard\\.",
         parse_mode="MarkdownV2",
     )
 

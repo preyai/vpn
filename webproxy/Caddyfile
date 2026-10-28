@@ -1,0 +1,36 @@
+# Based on tproxy-server's deploy/Caddyfile. Caddy shares the webproxy container's
+# network namespace: the relay only accepts requests arriving over loopback.
+{
+	admin off
+	servers {
+		protocols h1 h2
+		# Must stay well above the relay's 25s long poll
+		timeouts {
+			read_header 10s
+			read_body 60s
+		}
+	}
+}
+
+{$TG_WEBPROXY_DOMAIN} {
+	# Every path goes to the relay: it serves the site itself and only reveals the
+	# bridge page to clients that know the secret
+	encode zstd gzip
+	header {
+		-Via
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+	reverse_proxy 127.0.0.1:8080 {
+		transport http {
+			response_header_timeout 40s
+		}
+	}
+
+	handle_errors {
+		header {
+			Cache-Control "no-store"
+			Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		}
+		respond "{http.error.status_code} {http.error.status_text}" {http.error.status_code}
+	}
+}

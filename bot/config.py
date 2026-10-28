@@ -24,23 +24,22 @@ SERVER_IP              = _required("SERVER_IP")
 ADMIN_IDS              = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()]
 
 AWG_PORT               = int(os.environ.get("AWG_PORT", "51820"))
-XRAY_PORT              = int(os.environ.get("XRAY_PORT", "443"))
 XRAY_REALITY_SNI       = os.environ.get("XRAY_REALITY_SNI", "www.microsoft.com")
 XRAY_REALITY_PUBLIC_KEY = _required("XRAY_REALITY_PUBLIC_KEY")
 XRAY_REALITY_SHORT_ID  = _required("XRAY_REALITY_SHORT_ID")
 
-TG_PROXY_PORT          = int(os.environ.get("TG_PROXY_PORT", "8080"))
-TG_PROXY_USER          = os.environ.get("TG_PROXY_USER", "tg")
-TG_PROXY_PASSWORD      = _required("TG_PROXY_PASSWORD")
+TG_WEBPROXY_DOMAIN     = _required("TG_WEBPROXY_DOMAIN").lower()
+TG_WEBPROXY_SECRET     = _required("TG_WEBPROXY_SECRET")
 
 WG_CONFIG_PATH         = "/etc/amneziawg/wg0.conf"
 XRAY_CONFIG_PATH       = "/etc/xray/config.json"
 
 AWG_CONTAINER_NAME     = "amneziawg"
 XRAY_CONTAINER_NAME    = "xray"
-
-# Port of the Telegram HTTP proxy inside the xray container
-TG_PROXY_INTERNAL_PORT = 8080
+SNI_ROUTER_CONTAINER_NAME = "sni_router"
+WEBPROXY_CONTAINER_NAME = "webproxy"
+WEBPROXY_CADDY_CONTAINER_NAME = "webproxy_caddy"
+WEBPROXY_BACKEND_CONTAINER_NAME = "webproxy_backend"
 
 WG_SERVER_IP           = "10.8.0.1"
 WG_SUBNET_BASE         = "10.8.0"

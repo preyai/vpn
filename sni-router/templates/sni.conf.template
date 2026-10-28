@@ -1,0 +1,17 @@
+# Docker's DNS: backends are resolved per connection, so recreated containers with
+# new IPs are picked up without restarting the router
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+map $ssl_preread_server_name $sni_backend {
+    ${TG_WEBPROXY_DOMAIN} webproxy:443;
+    # Reality, including probes that send another SNI or none
+    default               xray:443;
+}
+
+server {
+    listen 443;
+    ssl_preread on;
+    proxy_pass $sni_backend;
+    proxy_connect_timeout 5s;
+    proxy_timeout 1h;
+}

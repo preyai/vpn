@@ -72,10 +72,7 @@ services:
     container_name: xray
     volumes:
       - ./xray:/usr/local/etc/xray
-    ports:
-      - "${XRAY_PORT:-443}:443"
-      # Telegram HTTP proxy, an extra inbound the bot adds to config.json
-      - "${TG_PROXY_PORT:-8080}:8080"
+    # Port 443 is published by sni-router
     networks:
       - frontend
     logging: *default-logging
@@ -86,6 +83,85 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+
+  # Port 443 is shared: the router passes TLS for TG_WEBPROXY_DOMAIN to the WEB proxy
+  # and everything else to Xray, without decrypting either
+  sni-router:
+    image: nginx:1.27-alpine
+    container_name: sni_router
+    ports:
+      - "443:443"
+    environment:
+      # An empty domain would leave nginx unable to start, taking VLESS down with it
+      TG_WEBPROXY_DOMAIN: ${TG_WEBPROXY_DOMAIN:?set TG_WEBPROXY_DOMAIN in .env (bash scripts/setup.sh)}
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
+    volumes:
+      - ./sni-router/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./sni-router/templates:/etc/nginx/templates:ro
+    networks:
+      - frontend
+    depends_on:
+      - xray
+      - webproxy
+    logging: *default-logging
+    restart: unless-stopped
+
+  # Telegram WEB proxy: Caddy (TLS) -> tproxy-server -> teleproxy -> Telegram.
+  # The relay only talks over loopback, so Caddy and teleproxy join this
+  # container's network namespace
+  webproxy:
+    build: ./webproxy
+    container_name: webproxy
+    environment:
+      TG_WEBPROXY_DOMAIN: ${TG_WEBPROXY_DOMAIN:?set TG_WEBPROXY_DOMAIN in .env (bash scripts/setup.sh)}
+      TG_WEBPROXY_SECRET: ${TG_WEBPROXY_SECRET:?set TG_WEBPROXY_SECRET in .env (bash scripts/setup.sh)}
+    volumes:
+      - webproxy_data:/data
+      - ./webproxy/site:/data/site
+    ports:
+      - "80:80"   # Let's Encrypt HTTP challenge and redirect to HTTPS, served by Caddy
+    networks:
+      - frontend
+    logging: *default-logging
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  webproxy-caddy:
+    image: caddy:2.8-alpine
+    container_name: webproxy_caddy
+    network_mode: service:webproxy
+    environment:
+      TG_WEBPROXY_DOMAIN: ${TG_WEBPROXY_DOMAIN}
+    volumes:
+      - ./webproxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - webproxy
+    logging: *default-logging
+    restart: unless-stopped
+
+  webproxy-backend:
+    image: ghcr.io/teleproxy/teleproxy:4.9.0
+    container_name: webproxy_backend
+    network_mode: service:webproxy
+    environment:
+      SECRET: ${TG_WEBPROXY_SECRET}
+      PORT: "2398"
+      # Straight to Telegram's DCs: no middle-end, so Docker's NAT does not matter
+      DIRECT_MODE: "true"
+      EXTERNAL_IP: ${SERVER_IP}
+      # Only the relay connects here; the public TLS ends at Caddy
+      MSS_CLAMP: "false"
+    depends_on:
+      - webproxy
+    logging: *default-logging
+    restart: unless-stopped
 
   bot:
     build: ./bot
@@ -106,6 +182,8 @@ services:
         condition: service_healthy
       xray:
         condition: service_healthy
+      webproxy:
+        condition: service_healthy
     networks:
       - backend
       - frontend
@@ -122,3 +200,6 @@ networks:
 
 volumes:
   postgres_data:
+  webproxy_data:
+  caddy_data:
+  caddy_config:

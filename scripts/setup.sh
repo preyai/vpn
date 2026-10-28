@@ -23,12 +23,53 @@ setup_telegram() {
     fi
 }
 
-# .env files created before the Telegram HTTP proxy existed lack its settings
-ensure_tg_proxy() {
-    grep -q '^TG_PROXY_PASSWORD=' .env && return
-    printf '\n# HTTP proxy for Telegram Desktop (served by Xray)\nTG_PROXY_PORT=8080\nTG_PROXY_USER=tg\nTG_PROXY_PASSWORD=%s\n' \
-        "$(openssl rand -hex 16)" >> .env
-    info "Telegram proxy credentials added to .env."
+# Sets KEY=value in .env, appending the line if it is missing
+set_env() {
+    if grep -q "^$1=" .env; then
+        sed -i "s|^$1=.*|$1=$2|" .env
+    else
+        printf '%s=%s\n' "$1" "$2" >> .env
+    fi
+}
+
+resolves_to() {
+    python3 -c 'import socket, sys; sys.exit(sys.argv[2] not in {a[4][0] for a in socket.getaddrinfo(sys.argv[1], None, socket.AF_INET)})' \
+        "$1" "$2" 2>/dev/null
+}
+
+# The Telegram WEB proxy is served over HTTPS on its own domain, which must point at this server
+ask_webproxy_domain() {
+    TG_WEBPROXY_DOMAIN=""
+    while [ -t 0 ]; do
+        read -r -p "Domain for the Telegram WEB proxy (A record -> ${SERVER_IP}): " DOMAIN_INPUT || true
+        DOMAIN_INPUT=$(printf '%s' "$DOMAIN_INPUT" | tr 'A-Z' 'a-z')
+        if [[ ! "$DOMAIN_INPUT" =~ ^[a-z0-9-]+(\.[a-z0-9-]+)+$ ]]; then
+            warn "That does not look like a domain."
+            continue
+        fi
+        if ! resolves_to "$DOMAIN_INPUT" "$SERVER_IP"; then
+            warn "${DOMAIN_INPUT} does not resolve to ${SERVER_IP} yet — Let's Encrypt will not issue a certificate until it does."
+            read -r -p "Use it anyway? [y/N] " DOMAIN_FORCE || true
+            [[ "$DOMAIN_FORCE" =~ ^[Yy] ]] || continue
+        fi
+        TG_WEBPROXY_DOMAIN="$DOMAIN_INPUT"
+        break
+    done
+    [ -n "$TG_WEBPROXY_DOMAIN" ] || warn "Set TG_WEBPROXY_DOMAIN in .env before starting the containers."
+}
+
+# .env files created before the WEB proxy existed lack its settings
+ensure_webproxy() {
+    if ! grep -q '^TG_WEBPROXY_SECRET=.' .env; then
+        set_env TG_WEBPROXY_SECRET "$(openssl rand -hex 16)"
+        info "Telegram WEB proxy secret added to .env."
+    fi
+    if ! grep -q '^TG_WEBPROXY_DOMAIN=.' .env; then
+        SERVER_IP=$(grep -m1 '^SERVER_IP=' .env | cut -d= -f2-)
+        ask_webproxy_domain
+        [ -n "$TG_WEBPROXY_DOMAIN" ] && set_env TG_WEBPROXY_DOMAIN "$TG_WEBPROXY_DOMAIN"
+    fi
+    return 0
 }
 
 print_next_steps() {
@@ -62,7 +103,7 @@ fi
 # --- Load existing .env if present ---
 if [ -f .env ]; then
     warn ".env already exists. Skipping key generation (delete .env to regenerate)."
-    ensure_tg_proxy
+    ensure_webproxy
     setup_telegram
     print_next_steps
     exit 0
@@ -216,8 +257,8 @@ EOF
 
 info "Xray config created."
 
-# --- Generate Telegram proxy password ---
-TG_PROXY_PASSWORD=$(openssl rand -hex 16)
+# --- Generate Telegram WEB proxy secret ---
+TG_WEBPROXY_SECRET=$(openssl rand -hex 16)
 
 # --- Generate PostgreSQL password ---
 POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
@@ -241,6 +282,8 @@ if [[ ! "$SERVER_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
     fi
 fi
 
+ask_webproxy_domain
+
 # --- Write .env ---
 # Created only now, so a run that failed earlier can simply be repeated
 sed \
@@ -251,7 +294,8 @@ sed \
     -e "s|^XRAY_REALITY_PUBLIC_KEY=.*|XRAY_REALITY_PUBLIC_KEY=${XRAY_PUBLIC_KEY}|" \
     -e "s|^XRAY_REALITY_SHORT_ID=.*|XRAY_REALITY_SHORT_ID=${XRAY_SHORT_ID}|" \
     -e "s|^XRAY_REALITY_SNI=.*|XRAY_REALITY_SNI=${XRAY_REALITY_SNI}|" \
-    -e "s|^TG_PROXY_PASSWORD=.*|TG_PROXY_PASSWORD=${TG_PROXY_PASSWORD}|" \
+    -e "s|^TG_WEBPROXY_DOMAIN=.*|TG_WEBPROXY_DOMAIN=${TG_WEBPROXY_DOMAIN}|" \
+    -e "s|^TG_WEBPROXY_SECRET=.*|TG_WEBPROXY_SECRET=${TG_WEBPROXY_SECRET}|" \
     .env.example > .env
 
 info "Keys and configs generated."
@@ -266,4 +310,4 @@ echo "Server IP:        ${SERVER_IP}"
 echo "WireGuard pubkey: ${WG_PUBLIC_KEY}"
 echo "Xray pubkey:      ${XRAY_PUBLIC_KEY}"
 echo "Xray SNI:         ${XRAY_REALITY_SNI}"
-echo "Telegram proxy:   HTTP, port 8080, user tg"
+echo "WEB proxy:        ${TG_WEBPROXY_DOMAIN:-(set TG_WEBPROXY_DOMAIN in .env)}"

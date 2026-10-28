@@ -53,7 +53,8 @@ def _build_vless_link(uuid: str, name: str) -> str:
         f"&type=tcp"
         f"&flow=xtls-rprx-vision"
     )
-    return f"vless://{uuid}@{cfg.SERVER_IP}:{cfg.XRAY_PORT}?{params}#{quote(name)}"
+    # Port 443 is fixed: sni-router publishes it and passes non-WEB-proxy TLS to Xray
+    return f"vless://{uuid}@{cfg.SERVER_IP}:443?{params}#{quote(name)}"
 
 
 def _add_client_to_config(data: dict, uuid: str, email: str) -> None:
@@ -125,53 +126,21 @@ def _apply_hardening(data: dict) -> bool:
     return changed
 
 
-_TG_PROXY_TAG = "tg-http-in"
-
-# Telegram's own ranges (https://core.telegram.org/resources/cidr.txt). The proxy password
-# is shared by the whole group, so the proxy must not reach anything but Telegram
-_TELEGRAM_CIDRS = [
-    "91.105.192.0/23", "91.108.4.0/22", "91.108.8.0/22", "91.108.12.0/22",
-    "91.108.16.0/22", "91.108.20.0/22", "91.108.56.0/22", "149.154.160.0/20",
-    "185.76.151.0/24", "2001:67c:4e8::/48", "2001:b28:f23c::/48",
-    "2001:b28:f23d::/48", "2001:b28:f23f::/48", "2a0a:f280::/32",
-]
-
-_TG_PROXY_RULES = [
-    {"type": "field", "inboundTag": [_TG_PROXY_TAG], "ip": _TELEGRAM_CIDRS, "outboundTag": "direct"},
-    {"type": "field", "inboundTag": [_TG_PROXY_TAG], "outboundTag": "blocked"},
-]
+# The HTTP proxy for Telegram that the WEB proxy replaced
+_OLD_TG_HTTP_PROXY_TAG = "tg-http-in"
 
 
-def _apply_tg_proxy(data: dict) -> bool:
-    """Adds the Telegram HTTP proxy inbound with the credentials from .env. Returns True if the config changed."""
-    changed = False
-    wanted = {
-        "tag": _TG_PROXY_TAG,
-        "listen": "0.0.0.0",
-        "port": cfg.TG_PROXY_INTERNAL_PORT,
-        "protocol": "http",
-        "settings": {
-            "accounts": [{"user": cfg.TG_PROXY_USER, "pass": cfg.TG_PROXY_PASSWORD}],
-            "allowTransparent": False,
-        },
-    }
-    inbounds = data.setdefault("inbounds", [])
-    current = next((i for i in inbounds if i.get("tag") == _TG_PROXY_TAG), None)
-    if current is None:
-        inbounds.append(wanted)
-        changed = True
-    elif current != wanted:
-        inbounds[inbounds.index(current)] = wanted
-        changed = True
-
-    # Re-added as a pair so the allow rule always comes right before the catch-all block
-    rules = data.setdefault("routing", {}).setdefault("rules", [])
-    wanted_rules = [r for r in rules if _TG_PROXY_TAG not in r.get("inboundTag", [])] + _TG_PROXY_RULES
-    if rules != wanted_rules:
-        rules[:] = wanted_rules
-        changed = True
-
-    return changed
+def _remove_tg_http_proxy(data: dict) -> bool:
+    """Drops the old Telegram HTTP proxy inbound and its rules. Returns True if the config changed."""
+    inbounds = data.get("inbounds", [])
+    kept_inbounds = [i for i in inbounds if i.get("tag") != _OLD_TG_HTTP_PROXY_TAG]
+    rules = data.get("routing", {}).get("rules", [])
+    kept_rules = [r for r in rules if _OLD_TG_HTTP_PROXY_TAG not in r.get("inboundTag", [])]
+    if len(kept_inbounds) == len(inbounds) and len(kept_rules) == len(rules):
+        return False
+    inbounds[:] = kept_inbounds
+    rules[:] = kept_rules
+    return True
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -227,8 +196,8 @@ async def sync_xray_config() -> None:
         data = await asyncio.to_thread(_read_xray_config)
         sni_changed = _apply_reality_sni(data)
         hardened = _apply_hardening(data)
-        tg_proxy_changed = _apply_tg_proxy(data)
-        if not (sni_changed or hardened or tg_proxy_changed):
+        http_proxy_removed = _remove_tg_http_proxy(data)
+        if not (sni_changed or hardened or http_proxy_removed):
             return
         await asyncio.to_thread(_write_xray_config, data)
         await asyncio.to_thread(_do_reload_xray)
@@ -237,8 +206,8 @@ async def sync_xray_config() -> None:
         logger.info("Xray Reality SNI updated to %s", cfg.XRAY_REALITY_SNI)
     if hardened:
         logger.info("Xray config hardened: access log off, private destinations blocked")
-    if tg_proxy_changed:
-        logger.info("Telegram HTTP proxy inbound updated")
+    if http_proxy_removed:
+        logger.info("Old Telegram HTTP proxy inbound removed")
 
 
 async def rebuild_xray_config_from_db() -> None:
@@ -249,7 +218,7 @@ async def rebuild_xray_config_from_db() -> None:
         data = await asyncio.to_thread(_read_xray_config)
         _apply_reality_sni(data)
         _apply_hardening(data)
-        _apply_tg_proxy(data)
+        _remove_tg_http_proxy(data)
         for inbound in data.get("inbounds", []):
             if inbound.get("tag") == "vless-in":
                 inbound["settings"]["clients"] = [

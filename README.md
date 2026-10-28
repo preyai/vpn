@@ -4,13 +4,14 @@ Self-hosted VPN server with a Telegram bot interface. Supports three protocols:
 
 - **AmneziaWG** — obfuscated WireGuard (bypasses DPI)
 - **VLESS + Reality** — Xray proxy with TLS camouflage
-- **HTTP proxy for Telegram** — served by Xray, works in Telegram Desktop
+- **Telegram WEB proxy** — Telegram's own proxy type that looks like an ordinary HTTPS website
 
 Everything runs in Docker Compose. Users manage their own configs via a Telegram bot — no web UI, no manual config editing.
 
 ## Requirements
 
-- Linux server with a public IP
+- Linux server with a public IP and open TCP ports 80 and 443
+- A domain (or subdomain) with an A record pointing at the server — for the Telegram WEB proxy
 - Docker + Docker Compose
 - `openssl` and `python3` (`apt install openssl python3`)
 - AmneziaWG kernel module on the host:
@@ -51,20 +52,34 @@ All settings live in `.env` (copied from `.env.example` by `setup.sh`).
 | `ADMIN_IDS` | Comma-separated Telegram user IDs with admin access |
 | `SERVER_IP` | Your server's public IP (auto-detected by `setup.sh`) |
 | `AWG_PORT` | AmneziaWG UDP port (default: `51820`) |
-| `XRAY_PORT` | VLESS/Reality TCP port (default: `443`) |
-| `TG_PROXY_PORT` | Telegram HTTP proxy TCP port (default: `8080`) |
-| `TG_PROXY_USER` / `TG_PROXY_PASSWORD` | Telegram HTTP proxy credentials, shared by all users |
+| `TG_WEBPROXY_DOMAIN` | Domain of the Telegram WEB proxy (asked for by `setup.sh`) |
+| `TG_WEBPROXY_SECRET` | Telegram WEB proxy secret, shared by all users |
 | `MAX_WG_CONFIGS` | Max WireGuard configs per user (default: `5`) |
 | `MAX_XRAY_CONFIGS` | Max VLESS configs per user (default: `5`) |
 | `CREATION_COOLDOWN_SECS` | Cooldown between config creations (default: `15`) |
 
-`XRAY_REALITY_*` and `TG_PROXY_PASSWORD` are generated automatically by `setup.sh`.
+`XRAY_REALITY_*` and `TG_WEBPROXY_SECRET` are generated automatically by `setup.sh`.
 
 `XRAY_REALITY_SNI` can be changed after setup: edit `.env` and run `docker compose up -d` — the bot rewrites `xray/config.json` on startup and restarts Xray. Links issued earlier carry the old SNI and must be re-sent from `/my_configs`.
 
-The Telegram proxy is an `http` inbound the bot adds to `xray/config.json` on startup, so changing `TG_PROXY_USER` / `TG_PROXY_PASSWORD` works the same way. It only connects to [Telegram's IP ranges](https://core.telegram.org/resources/cidr.txt) — with a password shared by the whole group it must not work as a general-purpose proxy. Telegram has no share links for HTTP proxies, so `/tg_proxy` sends the settings to enter by hand; Telegram's mobile apps support only SOCKS5 and MTProto proxies.
+### Telegram WEB proxy
 
-Upgrading from a version with MTProxy: run `bash scripts/setup.sh` (it adds the `TG_PROXY_*` settings to `.env`), open port `8080/tcp` in the firewall, then `docker compose up -d --build --remove-orphans` to remove the old `mtproxy` container. The `MTPROXY_*` lines left in `.env` are ignored.
+Telegram Desktop 7.1 added a WEB proxy type: the app carries ordinary MTProxy traffic through a built-in browser over real HTTPS/WebSocket to your domain, so to an observer it looks like someone visiting a website. Android support is in beta, iOS does not have it yet.
+
+The server side is Telegram's [tproxy-server](https://github.com/telegramdesktop/tproxy-server) (built from a pinned commit in `webproxy/Dockerfile` — upstream calls it a proof of concept), [Caddy](https://caddyserver.com) for the Let's Encrypt certificate, and [teleproxy](https://github.com/teleproxy/teleproxy) as the MTProxy backend in direct-to-DC mode. Without the secret the domain shows a plain website from `webproxy/site/` (a placeholder is created on first start — replace it with something real).
+
+Port 443 is shared with VLESS/Reality: `sni-router` (nginx `stream`) reads the TLS SNI without decrypting and sends `TG_WEBPROXY_DOMAIN` to the WEB proxy and everything else to Xray. Port 80 is used by Caddy for the certificate.
+
+`/tg_proxy` sends a `https://t.me/webproxy?server=…&secret=…` link. Changing `TG_WEBPROXY_DOMAIN` or `TG_WEBPROXY_SECRET`: edit `.env` and run `docker compose up -d`.
+
+### Upgrading from MTProxy or the HTTP proxy
+
+1. Point a domain's A record at the server.
+2. `bash scripts/setup.sh` — adds `TG_WEBPROXY_SECRET` to `.env` and asks for the domain.
+3. Open TCP 80 (443 is already open); 8443 and 8080 can be closed.
+4. `docker compose up -d --build --remove-orphans` — removes the old `mtproxy` container; the bot removes the old HTTP proxy inbound from `xray/config.json`.
+
+`XRAY_PORT` is gone: VLESS is always on 443 behind the router. If you had changed it, re-send VLESS links from `/my_configs`. Leftover `MTPROXY_*`, `TG_PROXY_*` and `XRAY_PORT` lines in `.env` are ignored.
 
 ## Bot Commands
 
@@ -75,7 +90,7 @@ Upgrading from a version with MTProxy: run `bash scripts/setup.sh` (it adds the 
 | `/new_xray` | Create a VLESS/Reality config (dialog) |
 | `/my_configs` | List all configs with resend and delete buttons |
 | `/traffic` | Traffic stats for all active configs |
-| `/tg_proxy` | Telegram HTTP proxy settings |
+| `/tg_proxy` | Telegram WEB proxy link |
 
 Admin commands (ADMIN_IDS only):
 
@@ -102,10 +117,15 @@ Admin commands (ADMIN_IDS only):
 │  └───────────────────────────────────┘ │
 │                                         │
 │  ┌──────────┐ ┌───────────────────┐   │
-│  │amneziawg │ │       xray        │   │
-│  │ :51820   │ │ :443 VLESS        │   │
-│  │          │ │ :8080 TG HTTP     │   │
-│  └──────────┘ └───────────────────┘   │
+│  │amneziawg │ │ sni-router :443   │   │
+│  │ :51820   │ └──┬─────────────┬──┘   │
+│  └──────────┘    │ other SNI   │ TG_WEBPROXY_DOMAIN
+│              ┌───▼────┐ ┌──────▼─────┐ │
+│              │  xray  │ │ webproxy   │ │
+│              │ VLESS  │ │ caddy :80  │ │
+│              └────────┘ │ tproxy     │ │
+│                         │ teleproxy  │ │
+│                         └────────────┘ │
 └─────────────────────────────────────────┘
 ```
 
@@ -121,7 +141,7 @@ Admin commands (ADMIN_IDS only):
 |---|---|
 | AmneziaWG | [AmneziaVPN](https://amnezia.org) (iOS, Android, macOS, Windows) |
 | VLESS/Reality | [v2rayNG](https://github.com/2dust/v2rayNG) (Android), [Hiddify](https://hiddify.com) (all platforms), [Streisand](https://apps.apple.com/app/streisand/id6450534064) (iOS) |
-| Telegram HTTP proxy | Telegram Desktop: Settings → Advanced → Connection type → Use custom proxy → HTTP |
+| Telegram WEB proxy | Telegram Desktop 7.1+ — tap the link from `/tg_proxy` (Android: beta, iOS: not yet) |
 
 ## Data
 

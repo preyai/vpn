@@ -13,11 +13,16 @@ logger = logging.getLogger(__name__)
 _CONTAINERS = [
     ("WireGuard", cfg.AWG_CONTAINER_NAME),
     ("Xray", cfg.XRAY_CONTAINER_NAME),
+    ("SNI router", cfg.SNI_ROUTER_CONTAINER_NAME),
+    ("WEB proxy", cfg.WEBPROXY_CONTAINER_NAME),
+    ("WEB proxy TLS", cfg.WEBPROXY_CADDY_CONTAINER_NAME),
+    ("WEB proxy backend", cfg.WEBPROXY_BACKEND_CONTAINER_NAME),
 ]
 
 _PORT_CHECKS = [
     ("Xray :443", cfg.XRAY_CONTAINER_NAME, 443),
-    (f"Telegram proxy :{cfg.TG_PROXY_INTERNAL_PORT}", cfg.XRAY_CONTAINER_NAME, cfg.TG_PROXY_INTERNAL_PORT),
+    ("SNI router :443", cfg.SNI_ROUTER_CONTAINER_NAME, 443),
+    ("WEB proxy :443", cfg.WEBPROXY_CONTAINER_NAME, 443),
 ]
 
 
