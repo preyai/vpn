@@ -29,7 +29,7 @@ USER_COMMANDS = [
     BotCommand(command="new_xray", description="Создать VLESS конфиг"),
     BotCommand(command="my_configs", description="Мои конфиги"),
     BotCommand(command="traffic", description="Статистика трафика"),
-    BotCommand(command="mtproxy", description="Прокси для Telegram"),
+    BotCommand(command="tg_proxy", description="Прокси для Telegram"),
     BotCommand(command="donate", description="Поддержать сервер"),
     BotCommand(command="help", description="Список команд"),
 ]

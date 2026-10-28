@@ -24,7 +24,7 @@ HELP_TEXT = r"""
 /new\_xray — создать конфиг
 
 *Прокси для Telegram:*
-/mtproxy — ссылка на MTProxy
+/tg\_proxy — HTTP\-прокси \(Telegram Desktop\)
 
 *Статистика:*
 /traffic — трафик по всем конфигам
@@ -63,25 +63,19 @@ async def cmd_help(message: Message) -> None:
     await message.answer(HELP_TEXT, parse_mode="MarkdownV2", reply_markup=main_keyboard())
 
 
-@router.message(Command("mtproxy"))
-@router.message(F.text == "📡 MTProxy")
-async def cmd_mtproxy(message: Message) -> None:
-    link = (
-        f"tg://proxy?server={cfg.SERVER_IP}"
-        f"&port={cfg.MTPROXY_PORT}"
-        f"&secret={cfg.MTPROXY_SECRET}"
-    )
-    web_link = (
-        f"https://t.me/proxy?server={cfg.SERVER_IP}"
-        f"&port={cfg.MTPROXY_PORT}"
-        f"&secret={cfg.MTPROXY_SECRET}"
-    )
+@router.message(Command("tg_proxy"))
+@router.message(F.text == "📡 Прокси для Telegram")
+async def cmd_tg_proxy(message: Message) -> None:
+    # Telegram has no share link for HTTP proxies, so the settings are entered by hand
     await message.answer(
-        f"📡 *MTProxy для Telegram*\n\n"
-        f"Нажми ссылку для подключения:\n"
-        f"[Подключить MTProxy]({web_link})\n\n"
-        f"Или скопируй вручную:\n"
-        f"`{link}`",
+        "📡 *HTTP\\-прокси для Telegram*\n\n"
+        f"Сервер: `{md(cfg.SERVER_IP)}`\n"
+        f"Порт: `{cfg.TG_PROXY_PORT}`\n"
+        f"Логин: `{md(cfg.TG_PROXY_USER)}`\n"
+        f"Пароль: `{md(cfg.TG_PROXY_PASSWORD)}`\n\n"
+        "*Telegram Desktop:* Настройки → Продвинутые настройки → Тип соединения → "
+        "Использовать собственный прокси → HTTP\\.\n\n"
+        "В мобильных приложениях Telegram HTTP\\-прокси нет — там используй VLESS или WireGuard\\.",
         parse_mode="MarkdownV2",
     )
 

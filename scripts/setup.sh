@@ -23,6 +23,14 @@ setup_telegram() {
     fi
 }
 
+# .env files created before the Telegram HTTP proxy existed lack its settings
+ensure_tg_proxy() {
+    grep -q '^TG_PROXY_PASSWORD=' .env && return
+    printf '\n# HTTP proxy for Telegram Desktop (served by Xray)\nTG_PROXY_PORT=8080\nTG_PROXY_USER=tg\nTG_PROXY_PASSWORD=%s\n' \
+        "$(openssl rand -hex 16)" >> .env
+    info "Telegram proxy credentials added to .env."
+}
+
 print_next_steps() {
     echo ""
     echo "Next steps:"
@@ -54,6 +62,7 @@ fi
 # --- Load existing .env if present ---
 if [ -f .env ]; then
     warn ".env already exists. Skipping key generation (delete .env to regenerate)."
+    ensure_tg_proxy
     setup_telegram
     print_next_steps
     exit 0
@@ -61,7 +70,6 @@ fi
 
 # Read configurable SNI/domain values — user may edit .env.example before running setup
 XRAY_REALITY_SNI=$(grep -m1 '^XRAY_REALITY_SNI=' .env.example | cut -d= -f2-)
-MTPROXY_DOMAIN=$(grep -m1 '^MTPROXY_DOMAIN=' .env.example | cut -d= -f2-)
 
 # --- Ask for the Reality SNI ---
 # Reality borrows the TLS handshake of this site, so it must serve TLS 1.3 on port 443
@@ -208,16 +216,8 @@ EOF
 
 info "Xray config created."
 
-# --- Generate MTProxy secret ---
-# mtg v2 expects an ee-prefixed secret that embeds a fronting hostname.
-# See: mtg generate-secret --hex google.com
-MTPROXY_SECRET=$(MTPROXY_DOMAIN="$MTPROXY_DOMAIN" python3 - <<'PYEOF'
-import os, secrets
-
-domain = os.environ["MTPROXY_DOMAIN"].encode("ascii")
-print("ee" + secrets.token_hex(16) + domain.hex())
-PYEOF
-)
+# --- Generate Telegram proxy password ---
+TG_PROXY_PASSWORD=$(openssl rand -hex 16)
 
 # --- Generate PostgreSQL password ---
 POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
@@ -251,8 +251,7 @@ sed \
     -e "s|^XRAY_REALITY_PUBLIC_KEY=.*|XRAY_REALITY_PUBLIC_KEY=${XRAY_PUBLIC_KEY}|" \
     -e "s|^XRAY_REALITY_SHORT_ID=.*|XRAY_REALITY_SHORT_ID=${XRAY_SHORT_ID}|" \
     -e "s|^XRAY_REALITY_SNI=.*|XRAY_REALITY_SNI=${XRAY_REALITY_SNI}|" \
-    -e "s|^MTPROXY_DOMAIN=.*|MTPROXY_DOMAIN=${MTPROXY_DOMAIN}|" \
-    -e "s|^MTPROXY_SECRET=.*|MTPROXY_SECRET=${MTPROXY_SECRET}|" \
+    -e "s|^TG_PROXY_PASSWORD=.*|TG_PROXY_PASSWORD=${TG_PROXY_PASSWORD}|" \
     .env.example > .env
 
 info "Keys and configs generated."
@@ -267,5 +266,4 @@ echo "Server IP:        ${SERVER_IP}"
 echo "WireGuard pubkey: ${WG_PUBLIC_KEY}"
 echo "Xray pubkey:      ${XRAY_PUBLIC_KEY}"
 echo "Xray SNI:         ${XRAY_REALITY_SNI}"
-echo "MTProxy domain:   ${MTPROXY_DOMAIN}"
-echo "MTProxy secret:   ${MTPROXY_SECRET}"
+echo "Telegram proxy:   HTTP, port 8080, user tg"

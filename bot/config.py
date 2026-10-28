@@ -29,16 +29,18 @@ XRAY_REALITY_SNI       = os.environ.get("XRAY_REALITY_SNI", "www.microsoft.com")
 XRAY_REALITY_PUBLIC_KEY = _required("XRAY_REALITY_PUBLIC_KEY")
 XRAY_REALITY_SHORT_ID  = _required("XRAY_REALITY_SHORT_ID")
 
-MTPROXY_PORT           = int(os.environ.get("MTPROXY_PORT", "8443"))
-MTPROXY_DOMAIN         = os.environ.get("MTPROXY_DOMAIN", "www.microsoft.com")
-MTPROXY_SECRET         = _required("MTPROXY_SECRET")
+TG_PROXY_PORT          = int(os.environ.get("TG_PROXY_PORT", "8080"))
+TG_PROXY_USER          = os.environ.get("TG_PROXY_USER", "tg")
+TG_PROXY_PASSWORD      = _required("TG_PROXY_PASSWORD")
 
 WG_CONFIG_PATH         = "/etc/amneziawg/wg0.conf"
 XRAY_CONFIG_PATH       = "/etc/xray/config.json"
 
 AWG_CONTAINER_NAME     = "amneziawg"
 XRAY_CONTAINER_NAME    = "xray"
-MTPROXY_CONTAINER_NAME = "mtproxy"
+
+# Port of the Telegram HTTP proxy inside the xray container
+TG_PROXY_INTERNAL_PORT = 8080
 
 WG_SERVER_IP           = "10.8.0.1"
 WG_SUBNET_BASE         = "10.8.0"

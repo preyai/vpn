@@ -4,7 +4,7 @@ Self-hosted VPN server with a Telegram bot interface. Supports three protocols:
 
 - **AmneziaWG** — obfuscated WireGuard (bypasses DPI)
 - **VLESS + Reality** — Xray proxy with TLS camouflage
-- **MTProxy** — native Telegram proxy
+- **HTTP proxy for Telegram** — served by Xray, works in Telegram Desktop
 
 Everything runs in Docker Compose. Users manage their own configs via a Telegram bot — no web UI, no manual config editing.
 
@@ -52,17 +52,19 @@ All settings live in `.env` (copied from `.env.example` by `setup.sh`).
 | `SERVER_IP` | Your server's public IP (auto-detected by `setup.sh`) |
 | `AWG_PORT` | AmneziaWG UDP port (default: `51820`) |
 | `XRAY_PORT` | VLESS/Reality TCP port (default: `443`) |
-| `MTPROXY_PORT` | MTProxy TCP port (default: `8443`) |
-| `MTPROXY_DOMAIN` | Fronting hostname embedded into the MTProxy secret |
+| `TG_PROXY_PORT` | Telegram HTTP proxy TCP port (default: `8080`) |
+| `TG_PROXY_USER` / `TG_PROXY_PASSWORD` | Telegram HTTP proxy credentials, shared by all users |
 | `MAX_WG_CONFIGS` | Max WireGuard configs per user (default: `5`) |
 | `MAX_XRAY_CONFIGS` | Max VLESS configs per user (default: `5`) |
 | `CREATION_COOLDOWN_SECS` | Cooldown between config creations (default: `15`) |
 
-`XRAY_REALITY_*`, `MTPROXY_DOMAIN`, and `MTPROXY_SECRET` are generated automatically by `setup.sh`.
+`XRAY_REALITY_*` and `TG_PROXY_PASSWORD` are generated automatically by `setup.sh`.
 
 `XRAY_REALITY_SNI` can be changed after setup: edit `.env` and run `docker compose up -d` — the bot rewrites `xray/config.json` on startup and restarts Xray. Links issued earlier carry the old SNI and must be re-sent from `/my_configs`.
 
-For `nineseconds/mtg:2`, the secret must be an `ee...` hex secret with an embedded fronting hostname, matching the upstream `mtg generate-secret --hex <domain>` format.
+The Telegram proxy is an `http` inbound the bot adds to `xray/config.json` on startup, so changing `TG_PROXY_USER` / `TG_PROXY_PASSWORD` works the same way. It only connects to [Telegram's IP ranges](https://core.telegram.org/resources/cidr.txt) — with a password shared by the whole group it must not work as a general-purpose proxy. Telegram has no share links for HTTP proxies, so `/tg_proxy` sends the settings to enter by hand; Telegram's mobile apps support only SOCKS5 and MTProto proxies.
+
+Upgrading from a version with MTProxy: run `bash scripts/setup.sh` (it adds the `TG_PROXY_*` settings to `.env`), open port `8080/tcp` in the firewall, then `docker compose up -d --build --remove-orphans` to remove the old `mtproxy` container. The `MTPROXY_*` lines left in `.env` are ignored.
 
 ## Bot Commands
 
@@ -73,7 +75,7 @@ For `nineseconds/mtg:2`, the secret must be an `ee...` hex secret with an embedd
 | `/new_xray` | Create a VLESS/Reality config (dialog) |
 | `/my_configs` | List all configs with resend and delete buttons |
 | `/traffic` | Traffic stats for all active configs |
-| `/mtproxy` | MTProxy connection link |
+| `/tg_proxy` | Telegram HTTP proxy settings |
 
 Admin commands (ADMIN_IDS only):
 
@@ -99,10 +101,11 @@ Admin commands (ADMIN_IDS only):
 │  │  (aiogram 3, asyncpg, FSM)        │ │
 │  └───────────────────────────────────┘ │
 │                                         │
-│  ┌──────────┐ ┌────────┐ ┌──────────┐ │
-│  │amneziawg │ │  xray  │ │ mtproxy  │ │
-│  │ :51820   │ │  :443  │ │  :8443   │ │
-│  └──────────┘ └────────┘ └──────────┘ │
+│  ┌──────────┐ ┌───────────────────┐   │
+│  │amneziawg │ │       xray        │   │
+│  │ :51820   │ │ :443 VLESS        │   │
+│  │          │ │ :8080 TG HTTP     │   │
+│  └──────────┘ └───────────────────┘   │
 └─────────────────────────────────────────┘
 ```
 
@@ -118,7 +121,7 @@ Admin commands (ADMIN_IDS only):
 |---|---|
 | AmneziaWG | [AmneziaVPN](https://amnezia.org) (iOS, Android, macOS, Windows) |
 | VLESS/Reality | [v2rayNG](https://github.com/2dust/v2rayNG) (Android), [Hiddify](https://hiddify.com) (all platforms), [Streisand](https://apps.apple.com/app/streisand/id6450534064) (iOS) |
-| MTProxy | Built into Telegram — tap the connection link |
+| Telegram HTTP proxy | Telegram Desktop: Settings → Advanced → Connection type → Use custom proxy → HTTP |
 
 ## Data
 
