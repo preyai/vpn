@@ -37,38 +37,51 @@ resolves_to() {
         "$1" "$2" 2>/dev/null
 }
 
-# The Telegram WEB proxy is served over HTTPS on its own domain, which must point at this server
-ask_webproxy_domain() {
-    TG_WEBPROXY_DOMAIN=""
+# Asks for a domain that must point at this server and stores it in the variable named $1.
+# Used for the Telegram WEB proxy and for subscription links, each served over HTTPS
+ask_domain() {
+    local var="$1" purpose="$2" input force
+    printf -v "$var" '%s' ""
     while [ -t 0 ]; do
-        read -r -p "Domain for the Telegram WEB proxy (A record -> ${SERVER_IP}): " DOMAIN_INPUT || true
-        DOMAIN_INPUT=$(printf '%s' "$DOMAIN_INPUT" | tr 'A-Z' 'a-z')
-        if [[ ! "$DOMAIN_INPUT" =~ ^[a-z0-9-]+(\.[a-z0-9-]+)+$ ]]; then
+        read -r -p "Domain for ${purpose} (A record -> ${SERVER_IP}): " input || true
+        input=$(printf '%s' "$input" | tr 'A-Z' 'a-z')
+        if [[ ! "$input" =~ ^[a-z0-9-]+(\.[a-z0-9-]+)+$ ]]; then
             warn "That does not look like a domain."
             continue
         fi
-        if ! resolves_to "$DOMAIN_INPUT" "$SERVER_IP"; then
-            warn "${DOMAIN_INPUT} does not resolve to ${SERVER_IP} yet — Let's Encrypt will not issue a certificate until it does."
-            read -r -p "Use it anyway? [y/N] " DOMAIN_FORCE || true
-            [[ "$DOMAIN_FORCE" =~ ^[Yy] ]] || continue
+        if ! resolves_to "$input" "$SERVER_IP"; then
+            warn "${input} does not resolve to ${SERVER_IP} yet — Let's Encrypt will not issue a certificate until it does."
+            read -r -p "Use it anyway? [y/N] " force || true
+            [[ "$force" =~ ^[Yy] ]] || continue
         fi
-        TG_WEBPROXY_DOMAIN="$DOMAIN_INPUT"
+        printf -v "$var" '%s' "$input"
         break
     done
-    [ -n "$TG_WEBPROXY_DOMAIN" ] || warn "Set TG_WEBPROXY_DOMAIN in .env before starting the containers."
+    [ -n "${!var}" ] || warn "Set ${var} in .env before starting the containers."
 }
 
-# .env files created before the WEB proxy existed lack its settings
-ensure_webproxy() {
+ask_domains() {
+    ask_domain TG_WEBPROXY_DOMAIN "the Telegram WEB proxy"
+    ask_domain SUBS_DOMAIN "subscription links"
+}
+
+# .env files created before the WEB proxy and subscriptions existed lack their settings
+ensure_domains() {
     if ! grep -q '^TG_WEBPROXY_SECRET=.' .env; then
         set_env TG_WEBPROXY_SECRET "$(openssl rand -hex 16)"
         info "Telegram WEB proxy secret added to .env."
     fi
-    if ! grep -q '^TG_WEBPROXY_DOMAIN=.' .env; then
-        SERVER_IP=$(grep -m1 '^SERVER_IP=' .env | cut -d= -f2-)
-        ask_webproxy_domain
-        [ -n "$TG_WEBPROXY_DOMAIN" ] && set_env TG_WEBPROXY_DOMAIN "$TG_WEBPROXY_DOMAIN"
-    fi
+    SERVER_IP=$(grep -m1 '^SERVER_IP=' .env | cut -d= -f2-)
+    local var
+    for var in TG_WEBPROXY_DOMAIN SUBS_DOMAIN; do
+        grep -q "^${var}=." .env && continue
+        if [ "$var" = TG_WEBPROXY_DOMAIN ]; then
+            ask_domain "$var" "the Telegram WEB proxy"
+        else
+            ask_domain "$var" "subscription links"
+        fi
+        [ -n "${!var}" ] && set_env "$var" "${!var}"
+    done
     return 0
 }
 
@@ -103,7 +116,7 @@ fi
 # --- Load existing .env if present ---
 if [ -f .env ]; then
     warn ".env already exists. Skipping key generation (delete .env to regenerate)."
-    ensure_webproxy
+    ensure_domains
     setup_telegram
     print_next_steps
     exit 0
@@ -282,7 +295,7 @@ if [[ ! "$SERVER_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
     fi
 fi
 
-ask_webproxy_domain
+ask_domains
 
 # --- Write .env ---
 # Created only now, so a run that failed earlier can simply be repeated
@@ -295,6 +308,7 @@ sed \
     -e "s|^XRAY_REALITY_SHORT_ID=.*|XRAY_REALITY_SHORT_ID=${XRAY_SHORT_ID}|" \
     -e "s|^XRAY_REALITY_SNI=.*|XRAY_REALITY_SNI=${XRAY_REALITY_SNI}|" \
     -e "s|^TG_WEBPROXY_DOMAIN=.*|TG_WEBPROXY_DOMAIN=${TG_WEBPROXY_DOMAIN}|" \
+    -e "s|^SUBS_DOMAIN=.*|SUBS_DOMAIN=${SUBS_DOMAIN}|" \
     -e "s|^TG_WEBPROXY_SECRET=.*|TG_WEBPROXY_SECRET=${TG_WEBPROXY_SECRET}|" \
     .env.example > .env
 
@@ -311,3 +325,4 @@ echo "WireGuard pubkey: ${WG_PUBLIC_KEY}"
 echo "Xray pubkey:      ${XRAY_PUBLIC_KEY}"
 echo "Xray SNI:         ${XRAY_REALITY_SNI}"
 echo "WEB proxy:        ${TG_WEBPROXY_DOMAIN:-(set TG_WEBPROXY_DOMAIN in .env)}"
+echo "Subscriptions:    ${SUBS_DOMAIN:-(set SUBS_DOMAIN in .env)}"

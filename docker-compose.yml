@@ -97,6 +97,7 @@ services:
     environment:
       # An empty domain would leave nginx unable to start, taking VLESS down with it
       TG_WEBPROXY_DOMAIN: ${TG_WEBPROXY_DOMAIN:?set TG_WEBPROXY_DOMAIN in .env (bash scripts/setup.sh)}
+      SUBS_DOMAIN: ${SUBS_DOMAIN:?set SUBS_DOMAIN in .env (bash scripts/setup.sh)}
       NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
     volumes:
       - ./sni-router/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -140,6 +141,7 @@ services:
     network_mode: service:webproxy
     environment:
       TG_WEBPROXY_DOMAIN: ${TG_WEBPROXY_DOMAIN}
+      SUBS_DOMAIN: ${SUBS_DOMAIN:?set SUBS_DOMAIN in .env (bash scripts/setup.sh)}
     volumes:
       - ./webproxy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

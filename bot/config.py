@@ -31,6 +31,10 @@ XRAY_REALITY_SHORT_ID  = _required("XRAY_REALITY_SHORT_ID")
 TG_WEBPROXY_DOMAIN     = _required("TG_WEBPROXY_DOMAIN").lower()
 TG_WEBPROXY_SECRET     = _required("TG_WEBPROXY_SECRET")
 
+# Subscription links are served by the bot on this domain (through sni-router and Caddy)
+SUBS_DOMAIN            = _required("SUBS_DOMAIN").lower()
+SUBS_LISTEN_PORT       = 8090
+
 WG_CONFIG_PATH         = "/etc/amneziawg/wg0.conf"
 XRAY_CONFIG_PATH       = "/etc/xray/config.json"
 

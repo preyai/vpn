@@ -11,7 +11,7 @@ Everything runs in Docker Compose. Users manage their own configs via a Telegram
 ## Requirements
 
 - Linux server with a public IP and open TCP ports 80 and 443
-- A domain (or subdomain) with an A record pointing at the server — for the Telegram WEB proxy
+- Two domains (or subdomains) with A records pointing at the server — for the Telegram WEB proxy and for subscription links
 - Docker + Docker Compose
 - `openssl` and `python3` (`apt install openssl python3`)
 - AmneziaWG kernel module on the host:
@@ -54,6 +54,7 @@ All settings live in `.env` (copied from `.env.example` by `setup.sh`).
 | `AWG_PORT` | AmneziaWG UDP port (default: `51820`) |
 | `TG_WEBPROXY_DOMAIN` | Domain of the Telegram WEB proxy (asked for by `setup.sh`) |
 | `TG_WEBPROXY_SECRET` | Telegram WEB proxy secret, shared by all users |
+| `SUBS_DOMAIN` | Domain for subscription links (asked for by `setup.sh`) |
 | `MAX_WG_CONFIGS` | Max WireGuard configs per user (default: `5`) |
 | `MAX_XRAY_CONFIGS` | Max VLESS configs per user (default: `5`) |
 | `CREATION_COOLDOWN_SECS` | Cooldown between config creations (default: `15`) |
@@ -74,6 +75,12 @@ Port 443 is shared with VLESS/Reality: `sni-router` (nginx `stream`) reads the T
 
 `/tg_proxy` sends a `https://t.me/webproxy?server=…&secret=…` link. Changing `TG_WEBPROXY_DOMAIN` or `TG_WEBPROXY_SECRET`: edit `.env` and run `docker compose up -d`.
 
+### Subscriptions
+
+`/sub` gives each user a personal `https://SUBS_DOMAIN/<token>` link. VLESS clients (Karing, Hiddify, v2rayNG, Streisand) add it as a subscription and refresh it every 12 hours, so new configs and changed keys or SNI reach them without re-sending links. The bot serves it on port 8090 inside the Docker network; `sni-router` and Caddy put it on 443 with a Let's Encrypt certificate. An unknown token and a blocked user both get a plain 404. WireGuard is not included: subscription formats cannot carry AmneziaWG's obfuscation settings.
+
+Subscriptions use their own domain: on the WEB proxy domain every path must look like the same ordinary website. Both still share the server's IP, so a leaked subscription link points at this server — that is what the reset button is for.
+
 ### Upgrading from MTProxy or the HTTP proxy
 
 1. Point a domain's A record at the server.
@@ -90,6 +97,7 @@ Port 443 is shared with VLESS/Reality: `sni-router` (nginx `stream`) reads the T
 | `/start` | Show welcome message and main menu |
 | `/new_wg` | Create a WireGuard config (dialog) |
 | `/new_xray` | Create a VLESS/Reality config (dialog) |
+| `/sub` | Personal subscription link with all VLESS configs; can be reset |
 | `/my_configs` | List all configs with resend and delete buttons |
 | `/traffic` | Traffic stats for all active configs |
 | `/tg_proxy` | Telegram WEB proxy link |

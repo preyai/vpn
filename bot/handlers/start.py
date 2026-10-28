@@ -22,6 +22,7 @@ HELP_TEXT = r"""
 
 *VLESS / Reality:*
 /new\_xray — создать конфиг
+/sub — подписка: все VLESS\-конфиги одной ссылкой
 
 *Прокси для Telegram:*
 /tg\_proxy — WEB\-прокси \(Telegram Desktop\)

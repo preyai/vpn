@@ -11,9 +11,10 @@ from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, BotCommand
 import config as cfg
 import database as db
 from middlewares.auth import AuthMiddleware
-from handlers import start, wireguard, xray_handler, stats, admin, resend
+from handlers import start, wireguard, xray_handler, stats, admin, resend, subscription
 from services import expiry as expiry_svc
 from services import status as status_svc
+from services import subscription as subscription_svc
 from services import traffic as traffic_svc
 from services import xray_service as xray_svc
 
@@ -28,6 +29,7 @@ USER_COMMANDS = [
     BotCommand(command="new_wg", description="Создать WireGuard конфиг"),
     BotCommand(command="new_xray", description="Создать VLESS конфиг"),
     BotCommand(command="my_configs", description="Мои конфиги"),
+    BotCommand(command="sub", description="Подписка на VLESS-конфиги"),
     BotCommand(command="traffic", description="Статистика трафика"),
     BotCommand(command="tg_proxy", description="Прокси для Telegram"),
     BotCommand(command="donate", description="Поддержать сервер"),
@@ -77,6 +79,7 @@ async def main() -> None:
     dp.include_router(wireguard.router)
     dp.include_router(xray_handler.router)
     dp.include_router(resend.router)
+    dp.include_router(subscription.router)
     dp.include_router(stats.router)
     dp.include_router(admin.router)
 
@@ -89,6 +92,7 @@ async def main() -> None:
     expiry_task = asyncio.create_task(expiry_svc.sweep_expired_configs())
     traffic_task = asyncio.create_task(traffic_svc.poll_traffic_totals())
     live_status_task = asyncio.create_task(status_svc.live_status_updater(bot))
+    subscription_runner = await subscription_svc.start_server()
 
     logger.info("Starting bot polling...")
     try:
@@ -98,6 +102,7 @@ async def main() -> None:
         expiry_task.cancel()
         traffic_task.cancel()
         live_status_task.cancel()
+        await subscription_runner.cleanup()
         await db.close_db()
         await bot.session.close()
 

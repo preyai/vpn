@@ -1,3 +1,5 @@
+import secrets
+
 import asyncpg
 from config import DATABASE_URL
 
@@ -64,6 +66,8 @@ ALTER TABLE xray_configs ADD COLUMN IF NOT EXISTS traffic_up_total   BIGINT DEFA
 ALTER TABLE xray_configs ADD COLUMN IF NOT EXISTS traffic_down_total BIGINT DEFAULT 0;
 ALTER TABLE xray_configs ADD COLUMN IF NOT EXISTS traffic_up_last    BIGINT DEFAULT 0;
 ALTER TABLE xray_configs ADD COLUMN IF NOT EXISTS traffic_down_last  BIGINT DEFAULT 0;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sub_token TEXT UNIQUE;
 """
 
 
@@ -118,6 +122,29 @@ async def get_all_users() -> list[dict]:
     async with _pool_().acquire() as conn:
         rows = await conn.fetch("SELECT * FROM users ORDER BY created_at DESC")
         return [dict(r) for r in rows]
+
+
+async def get_sub_token(user_id: int) -> str:
+    """Returns the user's subscription token, creating it on first use."""
+    async with _pool_().acquire() as conn:
+        await conn.execute(
+            "UPDATE users SET sub_token = $2 WHERE id = $1 AND sub_token IS NULL",
+            user_id, secrets.token_urlsafe(24),
+        )
+        return await conn.fetchval("SELECT sub_token FROM users WHERE id = $1", user_id)
+
+
+async def reset_sub_token(user_id: int) -> str:
+    token = secrets.token_urlsafe(24)
+    async with _pool_().acquire() as conn:
+        await conn.execute("UPDATE users SET sub_token = $2 WHERE id = $1", user_id, token)
+    return token
+
+
+async def get_user_by_sub_token(token: str) -> dict | None:
+    async with _pool_().acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM users WHERE sub_token = $1", token)
+        return dict(row) if row else None
 
 
 async def get_users_traffic_summary() -> list[dict]:
