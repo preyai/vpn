@@ -93,6 +93,34 @@ async def get_xray_user_traffic(email: str) -> tuple[int, int]:
     return 0, 0
 
 
+def _effective_total(total: int, last: int, current: int) -> int:
+    """Lifetime total as of right now: stored total plus whatever has
+    accumulated since the last background poll (reset-aware, same logic
+    as db.accumulate_*_traffic)."""
+    delta = current - last if current >= last else current
+    return total + delta
+
+
+async def get_wg_config_usage(config: dict) -> dict:
+    """Live counters (since the tunnel restarted) and lifetime totals for a WG config row."""
+    rx, tx, handshake = await get_wg_peer_traffic(config["public_key"])
+    return {
+        "up": rx, "down": tx, "handshake": handshake,
+        "up_total": _effective_total(config["traffic_rx_total"], config["traffic_rx_last"], rx),
+        "down_total": _effective_total(config["traffic_tx_total"], config["traffic_tx_last"], tx),
+    }
+
+
+async def get_xray_config_usage(config: dict) -> dict:
+    """Live counters (since Xray restarted) and lifetime totals for a VLESS config row."""
+    up, down = await get_xray_user_traffic(config["email"])
+    return {
+        "up": up, "down": down,
+        "up_total": _effective_total(config["traffic_up_total"], config["traffic_up_last"], up),
+        "down_total": _effective_total(config["traffic_down_total"], config["traffic_down_last"], down),
+    }
+
+
 async def _poll_once() -> None:
     for config in await db.get_all_active_wg_configs():
         rx, tx, _ = await get_wg_peer_traffic(config["public_key"])

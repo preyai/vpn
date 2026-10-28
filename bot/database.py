@@ -120,6 +120,29 @@ async def get_all_users() -> list[dict]:
         return [dict(r) for r in rows]
 
 
+async def get_users_traffic_summary() -> list[dict]:
+    """Per user: number of active configs and their lifetime traffic as of the last
+    background poll, heaviest users first."""
+    async with _pool_().acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT u.telegram_id, u.username, u.full_name, u.is_active,
+                      COALESCE(w.configs, 0) AS wg_configs,
+                      COALESCE(x.configs, 0) AS xray_configs,
+                      COALESCE(w.bytes, 0) + COALESCE(x.bytes, 0) AS total_bytes
+               FROM users u
+               LEFT JOIN (SELECT user_id, COUNT(*) AS configs,
+                                 SUM(traffic_rx_total + traffic_tx_total)::BIGINT AS bytes
+                          FROM wg_configs WHERE is_active = TRUE GROUP BY user_id) w
+                      ON w.user_id = u.id
+               LEFT JOIN (SELECT user_id, COUNT(*) AS configs,
+                                 SUM(traffic_up_total + traffic_down_total)::BIGINT AS bytes
+                          FROM xray_configs WHERE is_active = TRUE GROUP BY user_id) x
+                      ON x.user_id = u.id
+               ORDER BY total_bytes DESC, u.created_at"""
+        )
+        return [dict(r) for r in rows]
+
+
 # ── WireGuard ─────────────────────────────────────────────────────────────────
 
 async def add_wg_config(user_id: int, name: str, public_key: str, private_key: str, ip_address: str) -> int:

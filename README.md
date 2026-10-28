@@ -98,7 +98,8 @@ Admin commands (ADMIN_IDS only):
 
 | Command | Description |
 |---|---|
-| `/admin_users` | List all registered users |
+| `/admin_users` | List all registered users; 📁 opens a user's configs |
+| `/admin_traffic` | Traffic per user, heaviest first; 📁 opens a user's configs (names, types, ids, expiry, traffic — no keys or links) |
 | `/admin_ban` / `/admin_unban` | Ban or unban a user |
 | `/admin_rebuild_xray` | Rebuild Xray config from database |
 

@@ -8,6 +8,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 import config as cfg
 import database as db
 from services import status as status_svc
+from services import traffic as traffic_svc
 from services import wireguard as wg_svc
 from services import xray_service as xray_svc
 from utils import md
@@ -18,6 +19,15 @@ router = Router()
 
 def _is_admin(user_id: int) -> bool:
     return user_id in cfg.ADMIN_IDS
+
+
+def _short_name(user: dict) -> str:
+    name = user["full_name"] or (f"@{user['username']}" if user["username"] else str(user["telegram_id"]))
+    return name if len(name) <= 24 else name[:23] + "…"
+
+
+def _format_expiry(expires_at) -> str:
+    return f"до {expires_at.strftime('%Y-%m-%d')}" if expires_at else "бессрочно"
 
 
 @router.message(Command("admin_users"))
@@ -37,27 +47,107 @@ async def cmd_admin_users(message: Message) -> None:
         username = md(f"@{u['username']}") if u["username"] else f"id:{u['telegram_id']}"
         lines.append(f"{status} {name} \\({username}\\) — id `{u['telegram_id']}`")
 
-    buttons = [
-        [
-            InlineKeyboardButton(
-                text=f"🚫 {u['telegram_id']}",
-                callback_data=f"admin_block:{u['telegram_id']}",
+    buttons = []
+    for u in users:
+        row = [InlineKeyboardButton(text=f"📁 {_short_name(u)}", callback_data=f"admin_user:{u['telegram_id']}")]
+        if u["telegram_id"] not in cfg.ADMIN_IDS:
+            row.append(
+                InlineKeyboardButton(text=f"🚫 {u['telegram_id']}", callback_data=f"admin_block:{u['telegram_id']}")
+                if u["is_active"]
+                else InlineKeyboardButton(text=f"✅ {u['telegram_id']}", callback_data=f"admin_unblock:{u['telegram_id']}")
             )
-            if u["is_active"]
-            else InlineKeyboardButton(
-                text=f"✅ {u['telegram_id']}",
-                callback_data=f"admin_unblock:{u['telegram_id']}",
-            )
-        ]
-        for u in users
-        if u["telegram_id"] not in cfg.ADMIN_IDS
-    ]
+        buttons.append(row)
 
     await message.answer(
         "\n".join(lines),
         parse_mode="MarkdownV2",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None,
     )
+
+
+@router.message(Command("admin_traffic"))
+async def cmd_admin_traffic(message: Message) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+
+    summary = await db.get_users_traffic_summary()
+    if not summary:
+        await message.answer("Нет пользователей.")
+        return
+
+    lines = ["📊 *Трафик пользователей*", "_по данным последнего опроса, раз в 5 минут_\n"]
+    for u in summary:
+        status = "" if u["is_active"] else "🚫 "
+        lines.append(
+            f"{status}*{md(_short_name(u))}* — `{md(traffic_svc.format_bytes(u['total_bytes']))}` "
+            f"\\(WG: {u['wg_configs']}, VLESS: {u['xray_configs']}\\)"
+        )
+
+    buttons = [
+        [InlineKeyboardButton(text=f"📁 {_short_name(u)}", callback_data=f"admin_user:{u['telegram_id']}")]
+        for u in summary
+        if u["wg_configs"] or u["xray_configs"]
+    ]
+    await message.answer(
+        "\n".join(lines),
+        parse_mode="MarkdownV2",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None,
+    )
+
+
+@router.callback_query(F.data.startswith("admin_user:"))
+async def cb_admin_user(callback: CallbackQuery) -> None:
+    """Config list of one user: names, types and traffic, never keys or links."""
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("⛔ Нет доступа.", show_alert=True)
+        return
+
+    parts = callback.data.split(":")
+    if len(parts) != 2 or not parts[1].lstrip("-").isdigit():
+        await callback.answer("Неверный запрос.", show_alert=True)
+        return
+
+    user = await db.get_user(int(parts[1]))
+    if not user:
+        await callback.answer("Пользователь не найден.", show_alert=True)
+        return
+    await callback.answer()
+
+    wg_cfgs = await db.get_wg_configs(user["id"])
+    xray_cfgs = await db.get_xray_configs(user["id"])
+
+    username = f" \\({md('@' + user['username'])}\\)" if user["username"] else ""
+    status = "активен" if user["is_active"] else "заблокирован"
+    lines = [
+        f"👤 *{md(user['full_name'] or '—')}*{username} — id `{user['telegram_id']}`",
+        f"Статус: {status}\n",
+    ]
+
+    if not wg_cfgs and not xray_cfgs:
+        lines.append("Конфигов нет\\.")
+
+    if wg_cfgs:
+        lines.append(f"*WireGuard* \\({len(wg_cfgs)}\\):")
+        for c in wg_cfgs:
+            u = await traffic_svc.get_wg_config_usage(c)
+            lines.append(
+                f"  • *{md(c['name'])}* — id `{c['id']}`, `{md(c['ip_address'])}`, {md(_format_expiry(c['expires_at']))}\n"
+                f"    ↑ `{md(traffic_svc.format_bytes(u['up_total']))}`  "
+                f"↓ `{md(traffic_svc.format_bytes(u['down_total']))}` \\(всего\\)\n"
+                f"    🕐 `{md(traffic_svc.format_handshake(u['handshake']))}`"
+            )
+
+    if xray_cfgs:
+        lines.append(f"\n*VLESS/Reality* \\({len(xray_cfgs)}\\):")
+        for c in xray_cfgs:
+            u = await traffic_svc.get_xray_config_usage(c)
+            lines.append(
+                f"  • *{md(c['name'])}* — id `{c['id']}`, {md(_format_expiry(c['expires_at']))}\n"
+                f"    ↑ `{md(traffic_svc.format_bytes(u['up_total']))}`  "
+                f"↓ `{md(traffic_svc.format_bytes(u['down_total']))}` \\(всего\\)"
+            )
+
+    await callback.message.answer("\n".join(lines), parse_mode="MarkdownV2")
 
 
 @router.callback_query(F.data.startswith("admin_block:"))

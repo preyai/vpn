@@ -37,6 +37,7 @@ USER_COMMANDS = [
 ADMIN_COMMANDS = USER_COMMANDS + [
     BotCommand(command="status", description="Статус сервисов"),
     BotCommand(command="admin_users", description="Пользователи"),
+    BotCommand(command="admin_traffic", description="Трафик и конфиги пользователей"),
     BotCommand(command="admin_set_expiry", description="Срок действия конфига"),
     BotCommand(command="admin_cleanup_wg", description="Удалить неактивные WG конфиги"),
     BotCommand(command="admin_rebuild_xray", description="Пересобрать конфиг Xray из БД"),
