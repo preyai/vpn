@@ -35,6 +35,9 @@ TG_WEBPROXY_SECRET     = _required("TG_WEBPROXY_SECRET")
 SUBS_DOMAIN            = _required("SUBS_DOMAIN").lower()
 SUBS_LISTEN_PORT       = 8090
 
+# Optional payment link shown as a button under the donation QR code
+DONATE_URL             = os.environ.get("DONATE_URL", "").strip()
+
 WG_CONFIG_PATH         = "/etc/amneziawg/wg0.conf"
 XRAY_CONFIG_PATH       = "/etc/xray/config.json"
 

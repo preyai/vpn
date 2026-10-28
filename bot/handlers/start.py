@@ -97,4 +97,8 @@ async def cmd_donate(message: Message) -> None:
         photo=FSInputFile(_DONATE_QR_PATH),
         caption="💛 Спасибо, что пользуешься сервером\\!\n\nЕсли хочешь поддержать — вот реквизиты для перевода\\.",
         parse_mode="MarkdownV2",
+        # Scanning a QR code is awkward on the phone the bot is open on
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="💛 Перевести по ссылке", url=cfg.DONATE_URL),
+        ]]) if cfg.DONATE_URL else None,
     )
