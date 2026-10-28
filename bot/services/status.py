@@ -133,10 +133,11 @@ async def _publish_status(bot, text: str) -> None:
         except TelegramBadRequest as e:
             if "message is not modified" in e.message.lower():
                 return
-            if "message to edit not found" not in e.message.lower():
+            # "can't be edited": e.g. the stored message was posted by a previous bot token
+            if not any(s in e.message.lower() for s in ("message to edit not found", "message can't be edited")):
                 logger.exception("Failed to edit live status message")
                 return
-            logger.info("Live status message no longer exists, recreating")
+            logger.info("Live status message is gone or not editable, recreating")
         except Exception:
             logger.exception("Failed to edit live status message")
             return
