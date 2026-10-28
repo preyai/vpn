@@ -68,7 +68,10 @@ services:
       start_period: 10s
 
   xray:
-    image: ghcr.io/xtls/xray-core:latest
+    # Pinned: Xray 26.9.8+ requires an X25519MLKEM768 key share in the Reality
+    # ClientHello, and sing-box-based clients (Karing, Hiddify) fail with
+    # "reality verification failed" (https://github.com/KaringX/karing/issues/1952)
+    image: ghcr.io/xtls/xray-core:26.7.28
     container_name: xray
     volumes:
       - ./xray:/usr/local/etc/xray
