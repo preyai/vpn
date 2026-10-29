@@ -32,6 +32,12 @@ async def _handle(request: web.Request) -> web.Response:
     body = "\n".join(get_vless_link(c) for c in configs)
     up = sum(c["traffic_up_total"] for c in configs)
     down = sum(c["traffic_down_total"] for c in configs)
+    # total/expire are left out when there is no limit: clients read 0 as a 0-byte quota
+    # and as an expiry on 01.01.1970, and show the subscription as used up
+    userinfo = f"upload={up}; download={down}"
+    expiries = [c["expires_at"] for c in configs]
+    if expiries and all(expiries):
+        userinfo += f"; expire={int(max(expiries).timestamp())}"
 
     return web.Response(
         text=base64.b64encode(body.encode()).decode(),
@@ -39,7 +45,7 @@ async def _handle(request: web.Request) -> web.Response:
             "Cache-Control": "no-store",
             "Profile-Title": "base64:" + base64.b64encode(cfg.SUBS_DOMAIN.encode()).decode(),
             "Profile-Update-Interval": str(_UPDATE_INTERVAL_HOURS),
-            "Subscription-Userinfo": f"upload={up}; download={down}; total=0; expire=0",
+            "Subscription-Userinfo": userinfo,
         },
     )
 
