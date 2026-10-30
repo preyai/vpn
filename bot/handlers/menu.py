@@ -8,6 +8,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 
 import database as db
 from keyboards import BTN_CANCEL, BTN_CONFIGS, BTN_CONNECT, cancel_keyboard, main_keyboard, protocol_keyboard
+from services import rate_limit
 from services import traffic as traffic_svc
 from states import RenameConfig
 from utils import md
@@ -24,20 +25,34 @@ _PROTOCOL_TEXT = (
     "Не знаешь, что выбрать — начни с VLESS\\."
 )
 
+_VLESS_ONLY_TEXT = (
+    "➕ *Подключить устройство*\n\n"
+    "⚡ *VLESS* — маскируется под обычный сайт и хорошо переживает блокировки\\. "
+    "Приложения Karing, Hiddify, v2rayNG, Streisand\\.\n\n"
+    "Создание новых WireGuard конфигов временно закрыто\\."
+)
+
 _KINDS = {"wg": "🔒", "xray": "⚡"}
+
+
+def _protocol_view(telegram_id: int) -> tuple[str, InlineKeyboardMarkup]:
+    with_wg = rate_limit.can_create_wg(telegram_id)
+    return _PROTOCOL_TEXT if with_wg else _VLESS_ONLY_TEXT, protocol_keyboard(with_wg)
 
 
 # ── Connect a device ──────────────────────────────────────────────────────────
 
 @router.message(F.text == BTN_CONNECT)
 async def msg_connect(message: Message) -> None:
-    await message.answer(_PROTOCOL_TEXT, parse_mode="MarkdownV2", reply_markup=protocol_keyboard())
+    text, keyboard = _protocol_view(message.from_user.id)
+    await message.answer(text, parse_mode="MarkdownV2", reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "connect")
 async def cb_connect(callback: CallbackQuery) -> None:
     await callback.answer()
-    await callback.message.edit_text(_PROTOCOL_TEXT, parse_mode="MarkdownV2", reply_markup=protocol_keyboard())
+    text, keyboard = _protocol_view(callback.from_user.id)
+    await callback.message.edit_text(text, parse_mode="MarkdownV2", reply_markup=keyboard)
 
 
 # ── Device list ───────────────────────────────────────────────────────────────

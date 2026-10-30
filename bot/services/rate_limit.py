@@ -21,6 +21,10 @@ def set_cooldown(telegram_id: int) -> None:
     _last_creation[telegram_id] = time.monotonic()
 
 
+def can_create_wg(telegram_id: int) -> bool:
+    return not cfg.WG_ADMIN_ONLY or telegram_id in cfg.ADMIN_IDS
+
+
 async def check_wg_limit(user_id: int) -> bool:
     """Returns True if user is under the WG config cap."""
     configs = await db.get_wg_configs(user_id)

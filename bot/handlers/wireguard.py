@@ -34,6 +34,14 @@ def _confirm_keyboard(action: str, config_id: int) -> InlineKeyboardMarkup:
 # ── /new_wg — start FSM ───────────────────────────────────────────────────────
 
 async def start_wg_creation(message: Message, user_id: int, state: FSMContext) -> None:
+    if not rate_limit.can_create_wg(user_id):
+        await message.answer(
+            "🔒 Создание новых WireGuard конфигов временно закрыто\\. "
+            "Старые продолжают работать\\. Для нового устройства используй VLESS: /new\\_xray",
+            parse_mode="MarkdownV2",
+        )
+        return
+
     db_user = await db.get_user(user_id)
 
     remaining = rate_limit.check_cooldown(user_id)

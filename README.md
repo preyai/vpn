@@ -56,6 +56,7 @@ All settings live in `.env` (copied from `.env.example` by `setup.sh`).
 | `TG_WEBPROXY_SECRET` | Telegram WEB proxy secret, shared by all users |
 | `SUBS_DOMAIN` | Domain for subscription links (asked for by `setup.sh`) |
 | `DONATE_URL` | Optional payment link shown as a button under the donation QR code |
+| `WG_ADMIN_ONLY` | `true`: only admins can create new WireGuard configs; existing ones keep working |
 | `MAX_WG_CONFIGS` | Max WireGuard configs per user (default: `5`) |
 | `MAX_XRAY_CONFIGS` | Max VLESS configs per user (default: `5`) |
 | `CREATION_COOLDOWN_SECS` | Cooldown between config creations (default: `15`) |

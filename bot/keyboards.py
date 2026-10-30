@@ -38,11 +38,11 @@ def cancel_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def protocol_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔒 WireGuard — весь телефон или ПК", callback_data="new:wg")],
-        [InlineKeyboardButton(text="⚡ VLESS — лучше обходит блокировки", callback_data="new:xray")],
-    ])
+def protocol_keyboard(with_wg: bool) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="⚡ VLESS — лучше обходит блокировки", callback_data="new:xray")]]
+    if with_wg:
+        rows.insert(0, [InlineKeyboardButton(text="🔒 WireGuard — весь телефон или ПК", callback_data="new:wg")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def back_to_list_keyboard() -> InlineKeyboardMarkup:
