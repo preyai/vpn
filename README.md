@@ -145,7 +145,7 @@ Admin commands (ADMIN_IDS only):
 ```
 
 - The bot talks to containers via `docker-socket-proxy` — it never touches the raw Docker socket directly. Only `CONTAINERS`, `EXEC`, `KILL`, and `POST` APIs are permitted.
-- Two Docker networks keep VPN clients away from the control plane: `backend` (socket proxy, Postgres) is internal and only the bot is attached to it; `frontend` holds the containers that forward client traffic. Xray additionally refuses to proxy to private addresses, and its access log is off, so users' destinations are not recorded. Container logs are capped at 3 × 10 MB each.
+- Two Docker networks keep VPN clients away from the control plane: `backend` (socket proxy, Postgres) is internal and only the bot and the backup job are attached to it; `frontend` holds the containers that forward client traffic. Xray additionally refuses to proxy to private addresses, and its access log is off, so users' destinations are not recorded. Container logs are capped at 3 × 10 MB each.
 - WireGuard peer configs are written to `amneziawg/config/wg0.conf` (shared volume) and applied with `awg syncconf` — no tunnel restart.
 - Xray is reloaded with `SIGHUP` when clients are added or removed — reload takes ~50 ms vs several seconds for a restart.
 - Peer creation uses an `asyncio.Lock` to prevent IP allocation races under concurrent requests.
@@ -164,4 +164,20 @@ Admin commands (ADMIN_IDS only):
 - WireGuard config: `./amneziawg/config/` (bind mount)
 - Xray config: `./xray/` (bind mount)
 
-To back up: dump the Postgres volume and copy both config directories.
+## Backups and moving to a new server
+
+The `backup` container writes `backups/vpn-backup-<date>.tar.gz` once a day and deletes archives older than 14 days. Each holds the database, `.env`, `xray/config.json`, `wg0.conf`, the WEB proxy token key and `webproxy/site/`. Run one by hand with `docker compose exec backup sh /backup.sh now`. If no backup succeeds for 26 hours, the container turns unhealthy and the bot alerts admins.
+
+The archives contain every private key and are stored unencrypted, readable by root only, on the same server. They do not protect against losing the server itself: copy them elsewhere from time to time, and do it right away if an IP gets blocked (it usually stays reachable from outside the country that blocked it).
+
+```bash
+scp root@OLD_IP:/opt/vpn/backups/vpn-backup-XXXX.tar.gz .
+```
+
+To move: install the requirements on the new server, clone the repository, copy the archive there, and run:
+
+```bash
+bash scripts/restore.sh vpn-backup-XXXX.tar.gz
+```
+
+It restores everything, sets `SERVER_IP` to the new address and starts the stack. It asks for confirmation if the server already has a configuration. Then point the `TG_WEBPROXY_DOMAIN` and `SUBS_DOMAIN` A records at the new IP and stop the bot on the old server. Subscriptions keep working and pick up the new IP on their own; VLESS links and WireGuard configs issued earlier carry the old IP and must be re-sent from the bot.

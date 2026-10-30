@@ -43,6 +43,7 @@ XRAY_CONFIG_PATH       = "/etc/xray/config.json"
 
 AWG_CONTAINER_NAME     = "amneziawg"
 XRAY_CONTAINER_NAME    = "xray"
+BACKUP_CONTAINER_NAME  = "vpn_backup"
 SNI_ROUTER_CONTAINER_NAME = "sni_router"
 WEBPROXY_CONTAINER_NAME = "webproxy"
 WEBPROXY_CADDY_CONTAINER_NAME = "webproxy_caddy"

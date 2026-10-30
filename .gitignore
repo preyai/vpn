@@ -3,6 +3,7 @@ bot/data/
 amneziawg/config/
 xray/config.json
 webproxy/site/
+backups/
 __pycache__/
 *.pyc
 *.pyo

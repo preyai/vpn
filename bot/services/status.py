@@ -17,6 +17,7 @@ _CONTAINERS = [
     ("WEB proxy", cfg.WEBPROXY_CONTAINER_NAME),
     ("WEB proxy TLS", cfg.WEBPROXY_CADDY_CONTAINER_NAME),
     ("WEB proxy backend", cfg.WEBPROXY_BACKEND_CONTAINER_NAME),
+    ("Backup", cfg.BACKUP_CONTAINER_NAME),
 ]
 
 _PORT_CHECKS = [
