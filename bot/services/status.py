@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import time
 
+import aiohttp
 import docker
 from aiogram.exceptions import TelegramBadRequest
 
@@ -67,13 +69,65 @@ async def get_port_checks() -> list[tuple[str, bool]]:
     return results
 
 
+_IP_CHECK_URL = "https://cheburcheck.ru/api/v1/check"
+_IP_CHECK_TTL = 3600  # cheburcheck refreshes its lists every 6 hours
+_ip_check_cache: tuple[float, dict] | None = None
+
+
+async def get_ip_check() -> dict | None:
+    """Looks up SERVER_IP on cheburcheck.ru, None if that fails. Successful
+    answers are cached so the live status refresh doesn't hit the service each time."""
+    global _ip_check_cache
+    if _ip_check_cache and time.monotonic() - _ip_check_cache[0] < _IP_CHECK_TTL:
+        return _ip_check_cache[1]
+
+    try:
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(_IP_CHECK_URL, params={"target": cfg.SERVER_IP}) as response:
+                response.raise_for_status()
+                data = await response.json()
+    except Exception as e:
+        logger.warning("cheburcheck lookup failed: %r", e)
+        return None
+
+    _ip_check_cache = (time.monotonic(), data)
+    return data
+
+
+def _render_ip_check(data: dict | None) -> list[str]:
+    lines = ["🌐 *IP сервера \\(cheburcheck\\.ru\\)*"]
+    if data is None:
+        lines.append("⚠️ Нет данных")
+        return lines
+
+    lines.append("⛔ В списках блокировок" if data["blocked"] else "✅ Нет в списках блокировок")
+
+    if subnets := data.get("blocked_subnets"):
+        lines.append("Подсети РКН: " + ", ".join(f"`{md(subnet)}`" for subnet in subnets))
+    if providers := data.get("cdn_providers"):
+        lines.append(f"CDN: {md(', '.join(providers))}")
+
+    geo = data.get("geo") or {}
+    location = geo.get("location")
+    network = [geo.get("organisation"), geo.get("asn"), location if location != "-" else None]
+    if network := [part for part in network if part]:
+        lines.append(f"Сеть: {md(', '.join(network))}")
+
+    complaints = data.get("complaints") or []
+    if total := sum(day["count"] for day in complaints):
+        lines.append(f"Жалобы за {len(complaints)} дн\\.: {total}")
+
+    return lines
+
+
 _STATUS_ICON = {"running": "✅", "missing": "⛔", "error": "⛔"}
 _HEALTH_ICON = {"healthy": "✅", "unhealthy": "⚠️", "starting": "⏳", "n/a": ""}
 
 
 async def render_status_text() -> str:
     containers = await get_container_statuses()
-    ports = await get_port_checks()
+    ports, ip_check = await asyncio.gather(get_port_checks(), get_ip_check())
 
     lines = ["🩺 *Статус сервисов*\n"]
     for label, status, health in containers:
@@ -85,6 +139,9 @@ async def render_status_text() -> str:
     for label, ok in ports:
         icon = "✅" if ok else "⛔"
         lines.append(f"{icon} {md(label)}")
+
+    lines.append("")
+    lines.extend(_render_ip_check(ip_check))
 
     return "\n".join(lines)
 
