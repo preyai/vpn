@@ -96,6 +96,8 @@ Subscriptions use their own domain: on the WEB proxy domain every path must look
 
 Most things are reachable from the menu keyboard: **➕ Connect a device** asks WireGuard or VLESS with a short explanation of each; **📁 My devices** lists configs, and each opens a card with traffic, expiry, resend, QR only, rename and delete; admins also get **🛠 Admin** with buttons for users, traffic, status, stale WG cleanup and an Xray rebuild. Any message the bot does not understand gets the current menu back, which also replaces buttons left over from older versions.
 
+The status message (`/status` and the one pinned in the group) also shows whether `SERVER_IP` is on the block lists, its network and recent complaints. This comes from [cheburcheck.ru](https://cheburcheck.ru), so the bot sends `SERVER_IP` to that service, at most once an hour.
+
 | Command | Description |
 |---|---|
 | `/start` | Show welcome message and main menu |
